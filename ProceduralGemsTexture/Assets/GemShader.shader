@@ -1,4 +1,4 @@
-﻿Shader "Unlit/GemShader"
+﻿Shader "Custom/GemShader"
 {
 	Properties
 	{
@@ -6,7 +6,7 @@
 	}
 	SubShader
 	{
-		Tags { "RenderType"="Opaque" }			
+		Tags { "RenderType"="Opaque" "Gem" = "True"}			
 
 		Pass
 		{

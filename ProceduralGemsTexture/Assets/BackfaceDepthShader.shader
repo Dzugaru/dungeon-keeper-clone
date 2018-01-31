@@ -1,4 +1,11 @@
-﻿Shader "Unlit/BackfaceDepthShader"
+﻿//-----------------------------------------------
+//Renders linear depth of back faces of objects
+//-----------------------------------------------
+//Uses camera.depthTextureMode = DepthTextureMode.Depth; Unity feature,
+//which does ShadowCaster pass (with Cull Front) first, takes Z buffer and puts it into _CameraDepthTexture,
+//then regular (first) pass writes depth to Float RenderTexture
+
+Shader "Custom/BackfaceDepthShader"
 {
 	Properties
 	{
@@ -6,8 +13,7 @@
 	}
 	SubShader
 	{
-		Tags { "RenderType" = "Opaque" }
-
+		Tags { "RenderType" = "Opaque" "Gem" = "True"}
 
 		Pass
 		{
@@ -47,23 +53,22 @@
 			ENDCG
 		}
 
-		Pass{
-				Tags{
-				"LightMode" = "ShadowCaster"
-			}
+		Pass
+		{
+			Tags { "LightMode" = "ShadowCaster" }
 
-				Cull Front
+			Cull Front
 
-				CGPROGRAM
-#pragma target 3.0				
+			CGPROGRAM
+			#pragma target 3.0				
 
-#pragma vertex vert
-#pragma fragment frag
-#pragma multi_compile_shadowcaster
+			#pragma vertex vert
+			#pragma fragment frag
+			#pragma multi_compile_shadowcaster
 
-#include "UnityCG.cginc"
+			#include "UnityCG.cginc"
 
-				struct v2f
+			struct v2f
 			{
 				V2F_SHADOW_CASTER;
 			};
@@ -72,15 +77,14 @@
 			{
 				v2f o;
 				TRANSFER_SHADOW_CASTER(o)
-					return o;
+				return o;
 			}
 
 			float4 frag(v2f i) : COLOR
 			{
 				SHADOW_CASTER_FRAGMENT(i)
 			}
-
-				ENDCG
-			}
+			ENDCG
+		}
 	}
 }
