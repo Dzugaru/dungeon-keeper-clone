@@ -12,6 +12,13 @@ namespace ConvexPolyhedra.Tests
     {
         public Transform pa, pb;
 
+        void Start()
+        {
+            //Ray2D a = new Ray2D(new Vector2(2, 0), new Vector2(-1, 1));
+            //Ray2D b = new Ray2D(new Vector2(3, 4), new Vector2(0, -1));
+            //Debug.Log(a.GetIntersection(b));
+        }
+
         void OnDrawGizmos()
         {
             if(pa != null && pb != null)

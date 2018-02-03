@@ -238,11 +238,138 @@ namespace ConvexPolyhedra
                     }                    
                 }
             }            
-        }
+        }        
 
         public List<List<Vector3>> GetPlaneCutPolygons(Vector3[] points)
         {
-            throw new NotImplementedException();
+            List<List<Vector3>> polys = new List<List<Vector3>>();
+
+            for (int i = 0; i < points.Length; i++)
+            {
+                Vector3 p = points[i];                           
+
+                Plane plane = new Plane(p.normalized, p);
+
+                Vector3 planeBasisX = p.GetSomeOrthogonal().normalized;
+                Vector3 planeBasisY = Vector3.Cross(p, p.GetSomeOrthogonal()).normalized;
+                
+                List<Ray2D> intersWithOther = new List<Ray2D>();
+                for (int j = 0; j < points.Length; j++)
+                {
+                    if (i == j)
+                        continue;
+
+                    Plane other = new Plane(points[j].normalized, points[j]);
+                    Ray? possibleInter = plane.GetIntersection(other);
+                    if (possibleInter == null)
+                        continue;
+                    Ray inter = possibleInter.Value;
+
+                    Ray2D interInPlane = new Ray2D(
+                            Extensions.ProjectOnPlanarBasis(planeBasisX, planeBasisY,  inter.origin - p),
+                            Extensions.ProjectOnPlanarBasis(planeBasisX, planeBasisY, inter.direction)
+                        );
+
+                    //Set winding dir
+                    if (Extensions.PerpDot(interInPlane.direction, interInPlane.origin) < 0)
+                        interInPlane.direction = -interInPlane.direction;
+
+                    intersWithOther.Add(interInPlane);
+                }
+
+                //Debug.Log("Position " + p);
+                //foreach(Ray2D r in intersWithOther)
+                //{
+                //    Debug.Log(r);
+                //}
+
+
+
+                //Find nearest intersection ray
+                float smallestSqrDist = float.MaxValue;
+                Vector2 nearestPoint = Vector2.zero;
+                int nearestRayIndex = -1;
+
+                for (int j = 0; j < intersWithOther.Count; j++)
+                {
+                    Ray2D r = intersWithOther[j];
+                    Vector2 candidateNearestPoint = r.GetNearestPointOnRay(Vector2.zero);
+                    if (candidateNearestPoint.sqrMagnitude < smallestSqrDist)
+                    {
+                        smallestSqrDist = candidateNearestPoint.sqrMagnitude;
+                        nearestPoint = candidateNearestPoint;
+                        nearestRayIndex = j;
+                    }
+                }
+
+                //Debug.Log(smallestSqrDist);
+                //Debug.Log(nearestPoint);
+                //Debug.Log(nearestRayIndex);
+
+                
+
+                List<Vector2> polyVertices = new List<Vector2>();
+              
+                //Go clockwise searching nearest intersections between current ray and others
+                int startRayIndex = nearestRayIndex;
+                int rayIndex = startRayIndex;
+                int prevRayIndex = rayIndex;
+                Vector2 position = nearestPoint;
+
+                //int debugStop = 0;
+                do
+                {
+                    Ray2D ray = intersWithOther[rayIndex];
+                    smallestSqrDist = float.MaxValue;
+                    Vector2 nearestNextPosition = Vector2.zero;
+
+                    for (int j = 0; j < intersWithOther.Count; j++)
+                    {
+                        Ray2D otherRay = intersWithOther[j];
+                        //if (j == rayIndex || Extensions.PerpDot(ray.direction, otherRay.direction) < 1e-6)
+                        //    continue;
+                        if (j == rayIndex || j == prevRayIndex)
+                            continue;
+
+                        //Debug.Log(rayIndex.ToString() + " " + j.ToString());
+                        Vector2 inters = ray.GetIntersection(otherRay);
+                        //Debug.Log(inters);
+                        //Debug.Log(ray.direction);
+                        //Debug.Log(inters - position);
+                        if ((inters - position).sqrMagnitude < smallestSqrDist && Vector2.Dot(ray.direction, inters - position) > 0)
+                        {
+                            smallestSqrDist = (inters - position).sqrMagnitude;
+                            nearestNextPosition = inters;
+                            nearestRayIndex = j;
+                        }
+                    }
+
+                    position = nearestNextPosition;
+                    polyVertices.Add(position);
+                    prevRayIndex = rayIndex;
+                    rayIndex = nearestRayIndex;                    
+
+                    //Debug.Log("Iter " + debugStop);
+                    //Debug.Log(ray);
+                    //Debug.Log(rayIndex);
+                    //Debug.Log(intersWithOther[rayIndex]);
+                    //Debug.Log(nearestNextPosition);                    
+
+                    //debugStop++;
+                    //if (debugStop > 10)
+                    //    throw new Exception();
+                } while (rayIndex != startRayIndex);
+
+                List<Vector3> polyVertices3D = new List<Vector3>();
+                foreach (Vector2 v in polyVertices)
+                    polyVertices3D.Add(p + v.x * planeBasisX + v.y * planeBasisY);
+
+                polys.Add(polyVertices3D);
+
+                //break;
+            }
+
+            return polys;
         }
     }
 }

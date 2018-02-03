@@ -27,6 +27,8 @@ namespace ConvexPolyhedra.Tests
 
         List<Generator.Edge> edges = new List<Generator.Edge>();
 
+        List<List<Vector3>> polys;
+
         void Start()
         {
                 
@@ -70,9 +72,10 @@ namespace ConvexPolyhedra.Tests
             points = gen.GeneratePointsOnSphere(nPoints);
             points = gen.FindRelaxedConfigurationOfPointsOnSphere(points, nearest, Generator.InverseLinearRepel, stepAngle, stepReduction, nIter);
 
-            edges = gen.GetConvexHullEdges(points);
+            polys = gen.GetPlaneCutPolygons(points);
 
-            
+            //edges = gen.GetConvexHullEdges(points);
+
             foreach (Vector3 p in points)
             {
                 Transform t = GameObject.CreatePrimitive(PrimitiveType.Cube).transform;
@@ -126,6 +129,18 @@ namespace ConvexPolyhedra.Tests
             //    Gizmos.color = Color.yellow;
             //    Gizmos.DrawWireSphere(Vector3.zero, 10);
             //}
+
+            if (polys != null)
+            {
+                Gizmos.color = Color.red;
+                foreach(List<Vector3> poly in polys)
+                {
+                    for (int i = 0; i < poly.Count; i++)
+                    {
+                        Gizmos.DrawLine(poly[i] * 10f, poly[(i + 1) % poly.Count] * 10f);
+                    }
+                }
+            }
 
             Gizmos.color = Color.red;
             foreach (Generator.Edge e in edges)
