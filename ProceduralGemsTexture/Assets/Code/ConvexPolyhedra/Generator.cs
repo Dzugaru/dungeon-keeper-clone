@@ -239,5 +239,10 @@ namespace ConvexPolyhedra
                 }
             }            
         }
+
+        public List<List<Vector3>> GetPlaneCutPolygons(Vector3[] points)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

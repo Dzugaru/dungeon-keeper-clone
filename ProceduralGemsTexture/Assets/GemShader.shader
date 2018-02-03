@@ -42,11 +42,9 @@
 			}
 			
 			fixed4 frag (v2f i) : SV_Target
-			{				
-				float2 screenUV = i.screenPos.xy / i.screenPos.w;
-
-				float backDepth = tex2D(_BackFaceDepthTex, screenUV).r;
-				float depth = LinearEyeDepth(tex2D(_CameraDepthTexture, screenUV));
+			{	
+				float backDepth = tex2Dproj(_BackFaceDepthTex, i.screenPos).r;
+				float depth = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, i.screenPos));
 
 				return float4((backDepth - depth) / 4, 0, 0, 1);
 			}
