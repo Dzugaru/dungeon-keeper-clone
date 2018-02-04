@@ -8,7 +8,7 @@ using RNG = UnityEngine.Random;
 
 namespace ConvexPolyhedra
 {
-    public class Generator : MonoBehaviour
+    public class Generator
     {
         struct NeighAndDist
         {
