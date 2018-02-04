@@ -96,7 +96,8 @@ namespace ConvexPolyhedra.Tests
 
             List<Vector3> vertices = new List<Vector3>();
             List<int> tris = new List<int>();
-            gen.GenerateConvexHullTriangles(points, vertices, tris);
+            //gen.GenerateConvexHullTriangles(points, vertices, tris);
+            gen.GeneratePolyTriangles(points, vertices, tris);
 
             Mesh mesh = new Mesh();
             mesh.SetVertices(vertices);
@@ -105,8 +106,8 @@ namespace ConvexPolyhedra.Tests
 
             GetComponent<MeshFilter>().sharedMesh = mesh;
 
-            AssetDatabase.CreateAsset(mesh, "Assets/GemMesh.asset");
-            AssetDatabase.SaveAssets();
+            //AssetDatabase.CreateAsset(mesh, "Assets/GemMesh.asset");
+            //AssetDatabase.SaveAssets();
         }
 
         void Update()

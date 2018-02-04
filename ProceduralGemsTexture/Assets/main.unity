@@ -607,7 +607,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   seed: 1
-  nPoints: 25
+  nPoints: 100
   nIter: 100
   fps: 30
   stepAngle: 0.05

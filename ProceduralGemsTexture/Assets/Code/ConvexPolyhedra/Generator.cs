@@ -240,6 +240,8 @@ namespace ConvexPolyhedra
             }            
         }        
 
+        //Each point defines a plane, 
+        //we get polyhedra enclosed by all such planes
         public List<List<Vector3>> GetPlaneCutPolygons(Vector3[] points)
         {
             List<List<Vector3>> polys = new List<List<Vector3>>();
@@ -250,6 +252,8 @@ namespace ConvexPolyhedra
 
                 Plane plane = new Plane(p.normalized, p);
 
+                //Project everything on a point-based plane
+                //and find 2d rays of intersection with other planes
                 Vector3 planeBasisX = p.GetSomeOrthogonal().normalized;
                 Vector3 planeBasisY = Vector3.Cross(p, p.GetSomeOrthogonal()).normalized;
                 
@@ -271,21 +275,13 @@ namespace ConvexPolyhedra
                         );
 
                     //Set winding dir
-                    if (Extensions.PerpDot(interInPlane.direction, interInPlane.origin) < 0)
+                    if (Extensions.PerpDot(interInPlane.direction, interInPlane.origin) > 0)
                         interInPlane.direction = -interInPlane.direction;
 
                     intersWithOther.Add(interInPlane);
-                }
+                }              
 
-                //Debug.Log("Position " + p);
-                //foreach(Ray2D r in intersWithOther)
-                //{
-                //    Debug.Log(r);
-                //}
-
-
-
-                //Find nearest intersection ray
+                //Find nearest ray
                 float smallestSqrDist = float.MaxValue;
                 Vector2 nearestPoint = Vector2.zero;
                 int nearestRayIndex = -1;
@@ -300,13 +296,7 @@ namespace ConvexPolyhedra
                         nearestPoint = candidateNearestPoint;
                         nearestRayIndex = j;
                     }
-                }
-
-                //Debug.Log(smallestSqrDist);
-                //Debug.Log(nearestPoint);
-                //Debug.Log(nearestRayIndex);
-
-                
+                }               
 
                 List<Vector2> polyVertices = new List<Vector2>();
               
@@ -315,8 +305,7 @@ namespace ConvexPolyhedra
                 int rayIndex = startRayIndex;
                 int prevRayIndex = rayIndex;
                 Vector2 position = nearestPoint;
-
-                //int debugStop = 0;
+               
                 do
                 {
                     Ray2D ray = intersWithOther[rayIndex];
@@ -325,17 +314,11 @@ namespace ConvexPolyhedra
 
                     for (int j = 0; j < intersWithOther.Count; j++)
                     {
-                        Ray2D otherRay = intersWithOther[j];
-                        //if (j == rayIndex || Extensions.PerpDot(ray.direction, otherRay.direction) < 1e-6)
-                        //    continue;
+                        Ray2D otherRay = intersWithOther[j];                       
                         if (j == rayIndex || j == prevRayIndex)
                             continue;
-
-                        //Debug.Log(rayIndex.ToString() + " " + j.ToString());
-                        Vector2 inters = ray.GetIntersection(otherRay);
-                        //Debug.Log(inters);
-                        //Debug.Log(ray.direction);
-                        //Debug.Log(inters - position);
+                        
+                        Vector2 inters = ray.GetIntersection(otherRay);                        
                         if ((inters - position).sqrMagnitude < smallestSqrDist && Vector2.Dot(ray.direction, inters - position) > 0)
                         {
                             smallestSqrDist = (inters - position).sqrMagnitude;
@@ -347,17 +330,7 @@ namespace ConvexPolyhedra
                     position = nearestNextPosition;
                     polyVertices.Add(position);
                     prevRayIndex = rayIndex;
-                    rayIndex = nearestRayIndex;                    
-
-                    //Debug.Log("Iter " + debugStop);
-                    //Debug.Log(ray);
-                    //Debug.Log(rayIndex);
-                    //Debug.Log(intersWithOther[rayIndex]);
-                    //Debug.Log(nearestNextPosition);                    
-
-                    //debugStop++;
-                    //if (debugStop > 10)
-                    //    throw new Exception();
+                    rayIndex = nearestRayIndex;
                 } while (rayIndex != startRayIndex);
 
                 List<Vector3> polyVertices3D = new List<Vector3>();
@@ -365,11 +338,27 @@ namespace ConvexPolyhedra
                     polyVertices3D.Add(p + v.x * planeBasisX + v.y * planeBasisY);
 
                 polys.Add(polyVertices3D);
-
-                //break;
             }
 
             return polys;
+        }
+
+        public void GeneratePolyTriangles(Vector3[] points, List<Vector3> vertices, List<int> triangles)
+        {
+            List<List<Vector3>> polys = GetPlaneCutPolygons(points);
+
+            foreach (List<Vector3> poly in polys)
+            {
+                int vidx = vertices.Count;
+                vertices.AddRange(poly);
+
+                for (int i = 1; i < poly.Count - 1; i++)
+                {
+                    triangles.Add(vidx);
+                    triangles.Add(vidx + i);
+                    triangles.Add(vidx + i + 1);
+                }
+            }
         }
     }
 }
