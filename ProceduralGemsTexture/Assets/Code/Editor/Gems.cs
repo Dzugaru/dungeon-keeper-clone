@@ -5,16 +5,6 @@ using UnityEngine;
 
 public class Gems : EditorWindow
 {
-    struct Range
-    {
-        public int Min, Max;
-        public Range(int min, int max)
-        {
-            this.Min = min;
-            this.Max = max;
-        }
-    }
-
     enum MeshMode
     {
         ConvexHull,
@@ -23,25 +13,24 @@ public class Gems : EditorWindow
     }
 
     int numMeshesToGenerate = 10;
-    Range numPoints = new Range(7, 15);
-    MeshMode meshMode = MeshMode.Both;
+    MinMaxRangeInt numPoints = new MinMaxRangeInt(7, 15);
+    MeshMode meshMode = MeshMode.PlaneCut;
     int nRelaxIter = 100;
     float stepAngle = 0.05f;
     float stepReduction = 0.95f;
-    string folder = "GemMeshes";
+    string folder = "Resources/GemMeshes";
 
     bool isGeneratingMeshes = false;
-    int meshesGenerated = 0;
+    int generatedMeshesCount = 0;
 
 
     [MenuItem("Window/Gems")]
-
     public static void ShowWindow()
     {
         EditorWindow.GetWindow(typeof(Gems));
     }
 
-    void MakeRangeField(string label, ref Range range)
+    void MakeRangeField(string label, ref MinMaxRangeInt range)
     {
         GUILayout.BeginHorizontal();
         GUILayout.Label(label);
@@ -53,7 +42,8 @@ public class Gems : EditorWindow
     void GenerateMesh(string name)
     {
         ConvexPolyhedra.Generator gen = new ConvexPolyhedra.Generator();
-        Vector3[] points = gen.GeneratePointsOnSphere(Random.Range(numPoints.Min, numPoints.Max));
+        int exactNumPoints = Random.Range(numPoints.Min, numPoints.Max);
+        Vector3[] points = gen.GeneratePointsOnSphere(exactNumPoints);
         int nearest = points.Length - 1;
         points = gen.FindRelaxedConfigurationOfPointsOnSphere(points, nearest, ConvexPolyhedra.Generator.InverseLinearRepel, stepAngle, stepReduction, nRelaxIter);
 
@@ -78,6 +68,22 @@ public class Gems : EditorWindow
         AssetDatabase.SaveAssets();        
     }
 
+    void StartGeneratingMeshes()
+    {
+        isGeneratingMeshes = true;
+        generatedMeshesCount = 0;
+
+        FileUtil.DeleteFileOrDirectory("Assets/" + folder);
+        AssetDatabase.Refresh();
+
+        string path = "Assets";
+        foreach (string subf in folder.Split('/'))
+        {
+            AssetDatabase.CreateFolder(path, subf);
+            path += "/" + subf;
+        }
+    }
+
     void OnGUI()
     {
         GUILayout.BeginVertical(GUI.skin.box);      
@@ -92,32 +98,18 @@ public class Gems : EditorWindow
         bool generateButtonPressed = GUILayout.Button("Generate meshes");
         GUILayout.EndVertical();
 
-        if (generateButtonPressed)
-        {
-            isGeneratingMeshes = true;
-            meshesGenerated = 0;
-
-            FileUtil.DeleteFileOrDirectory("Assets/" + folder);
-            AssetDatabase.Refresh();
-
-            string path = "Assets";
-            foreach(string subf in folder.Split('/'))
-            {
-                AssetDatabase.CreateFolder(path, subf);
-                path += "/" + subf;
-            }            
-        }
+        if (generateButtonPressed)        
+            StartGeneratingMeshes();            
     }
 
     void Update()
     {
         if (isGeneratingMeshes)
         {
-            EditorUtility.DisplayProgressBar("Generating...", "", (float)meshesGenerated / numMeshesToGenerate);
-            GenerateMesh(meshesGenerated.ToString());
-            meshesGenerated++;
-
-            isGeneratingMeshes = meshesGenerated < numMeshesToGenerate;
+            EditorUtility.DisplayProgressBar("Generating...", "", (float)generatedMeshesCount / numMeshesToGenerate);
+            GenerateMesh(generatedMeshesCount.ToString());
+            generatedMeshesCount++;
+            isGeneratingMeshes = generatedMeshesCount < numMeshesToGenerate;
         }
         else
         {
