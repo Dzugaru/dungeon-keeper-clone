@@ -6,7 +6,7 @@ using UnityEngine;
 
 using System.IO;
 
-public class TextureBaker : EditorWindow
+public class GemsInStone : EditorWindow
 {
     struct Range
     {
@@ -24,47 +24,23 @@ public class TextureBaker : EditorWindow
     float yShiftPercent = 0.2f;
     float planeY = 0;
     MinMaxRangeFloat size = new MinMaxRangeFloat(0.02f, 0.02f);
-    Material planeMaterial, gemMaterial;
+    Material gemMaterial;
 
-    [MenuItem("Window/Texture Baker")]
+    [MenuItem("Window/Gems in stone")]
     public static void ShowWindow()
     {
-        EditorWindow.GetWindow(typeof(TextureBaker));
+        EditorWindow.GetWindow(typeof(GemsInStone));
     }
 
-    void Setup()
-    {
-        GameObject existingBaker = GameObject.Find("Baker");
-        if(existingBaker != null)
-            DestroyImmediate(existingBaker);
-
-        Transform root = new GameObject("Baker").transform;
-        Transform camTrans = new GameObject("Camera").transform;
-        camTrans.parent = root;
-        camTrans.localRotation = Quaternion.LookRotation(new Vector3(0, -1, 0));
-
-        Camera camera = camTrans.gameObject.AddComponent<Camera>();
-        camera.orthographic = true;
-        camera.transform.localPosition = new Vector3(0.5f, 1, 0.5f);
-        camera.orthographicSize = 0.5f;
-
-        Transform basePlane = GameObject.CreatePrimitive(PrimitiveType.Plane).transform;
-        basePlane.parent = root;
-        basePlane.localPosition = new Vector3(0.5f, planeY, 0.5f);
-        basePlane.localScale = new Vector3(0.1f, 0.1f, 0.1f);
-        basePlane.GetComponent<MeshRenderer>().sharedMaterial = planeMaterial;
-
-
+    void Generate()
+    {           
         Transform gems = new GameObject("Gems").transform;
-        gems.parent = root;
-        
         string[] gemMeshesPaths = Directory.GetFiles(Application.dataPath + "/" + meshesFolder, "*.asset")
                                            .Select(x => Path.GetFileName(x))
                                            .ToArray();
 
         Mesh[] gemMeshes = gemMeshesPaths.Select(x => AssetDatabase.LoadAssetAtPath<Mesh>("Assets/" + meshesFolder + "/" + x)).ToArray();
-
-        List<Vector2> positions = Noise.PoissonDiskSample(new Vector2(0, 0), new Vector2(1, 1), diskR, maxNumGems);
+        List<Vector2> positions = PoissonDiskInHexCellWithTilingSampler.Sample(diskR, maxNumGems);
 
         foreach(Vector2 pos in positions)
         {
@@ -75,7 +51,6 @@ public class TextureBaker : EditorWindow
             GameObject gem = new GameObject("Gem");
             gem.transform.parent = gems;
             gem.transform.localRotation = Random.rotationUniform;
-
             gem.transform.localScale = new Vector3(exactSize, exactSize, exactSize);
             MeshFilter meshFilter = gem.AddComponent<MeshFilter>(); 
             MeshRenderer meshRenderer = gem.AddComponent<MeshRenderer>();
@@ -85,17 +60,6 @@ public class TextureBaker : EditorWindow
 
             meshRenderer.sharedMaterial = gemMaterial;
         }
-
-        Texture2D tex = new Texture2D(512, 512, TextureFormat.RGB24, false);
-
-        camera.targetTexture = new RenderTexture(512, 512, 0, RenderTextureFormat.ARGB32);
-        camera.Render();
-
-        RenderTexture.active = camera.targetTexture;
-        tex.ReadPixels(new Rect(0, 0, 512, 512), 0, 0);
-
-        AssetDatabase.CreateAsset(tex, "Assets/Baked.asset");
-        AssetDatabase.SaveAssets();
     }
 
     void MakeFloatRangeField(string label, ref MinMaxRangeFloat range)
@@ -114,12 +78,72 @@ public class TextureBaker : EditorWindow
         planeY = EditorGUILayout.FloatField("Plane Y", planeY);
         yShiftPercent = EditorGUILayout.FloatField("Random Y shift", yShiftPercent);
         MakeFloatRangeField("Gems size", ref size);
-
-        planeMaterial = (Material)EditorGUILayout.ObjectField("Plane material", planeMaterial, typeof(Material), false);
         gemMaterial = (Material)EditorGUILayout.ObjectField("Gem material", gemMaterial, typeof(Material), false);
-        if(GUILayout.Button("Prepare"))
+
+        if (GUILayout.Button("Generate"))
         {
-            Setup();
+            Generate();
         }
     }
+
+    //Samples a bunch of points no closer than 'diskR' to each other
+    //inside a single hex cell, and takes care so that hex cell can be tiled
+    static class PoissonDiskInHexCellWithTilingSampler
+    {
+        static readonly float limitX = 1f / Mathf.Sqrt(3);
+        static readonly float limitY = 0.5f;
+
+        static Vector2 SampleInsideHex()
+        {            
+            for(; ; )
+            {
+                Vector2 sample = new Vector2(Random.Range(-limitX, limitX), Random.Range(-limitY, limitY));
+                if (HexXY.FromPlaneCoordinates(sample) == new HexXY(0, 0))
+                    return sample;
+            }            
+        }
+
+        static Vector2[] HexMirror(Vector2 v)
+        {
+            return new[]
+            {
+                v + HexXY.ex,
+                v - HexXY.ex,
+                v + HexXY.ey,
+                v - HexXY.ey,
+                v + HexXY.ex + HexXY.ey,
+                v - HexXY.ex - HexXY.ey
+            };           
+        }
+
+        public static List<Vector2> Sample(float diskR, int maxN)
+        {
+            const int maxNumTries = 100;
+            float sqrDiskR = diskR * diskR;
+
+            List<Vector2> mirroredSamples = new List<Vector2>();
+            List<Vector2> samples = new List<Vector2>();
+            for (int i = 0; i < maxN; i++)
+            {
+                Vector2 candidateSample = Vector2.zero;
+                int numTries = 0;
+                for (; numTries < maxNumTries; numTries++)
+                {
+                    candidateSample = SampleInsideHex();
+                    if (samples.Concat(mirroredSamples).All(s => (s - candidateSample).sqrMagnitude >= sqrDiskR))
+                        break;
+                }
+
+                if (numTries == maxNumTries)
+                    break;
+                else
+                {
+                    samples.Add(candidateSample);
+                    mirroredSamples.AddRange(HexMirror(candidateSample));
+                }
+            }
+
+            return samples;
+        }
+    }    
 }
