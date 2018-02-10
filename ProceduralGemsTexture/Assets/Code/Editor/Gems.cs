@@ -12,6 +12,7 @@ public class Gems : EditorWindow
         Both
     }
 
+
     int numMeshesToGenerate = 10;
     MinMaxRangeInt numPoints = new MinMaxRangeInt(7, 15);
     MeshMode meshMode = MeshMode.PlaneCut;

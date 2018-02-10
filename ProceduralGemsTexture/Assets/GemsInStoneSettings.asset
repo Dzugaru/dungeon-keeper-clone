@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b69725032a38f2448a3b1fec635627a3, type: 3}
+  m_Name: GemsInStoneSettings
+  m_EditorClassIdentifier: 
+  maxNumGems: 100
+  meshesFolder: Resources/GemMeshes
+  diskR: 0.12
+  yShiftPercent: 0.2
+  planeY: 0
+  size:
+    Min: 0.03
+    Max: 0.03
+  gemMaterial: {fileID: 2100000, guid: 3ab48b4515b3d174dbc4a6f9a0544edc, type: 2}
+  combineMeshOutPath: Resources/GemsInStoneHex.asset
+  wallHeight: 0
+  wallTopOffset: 0
+--- !u!114 &114810363119408684
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b69725032a38f2448a3b1fec635627a3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxNumGems: 200
+  meshesFolder: Resources/GemMeshes
+  diskR: 0.1
+  yShiftPercent: 0.2
+  planeY: 0
+  size:
+    Min: 0.03
+    Max: 0.03
+  gemMaterial: {fileID: 2100000, guid: 3ab48b4515b3d174dbc4a6f9a0544edc, type: 2}
+  combineMeshOutPath: Resources/GemsInStoneWall.asset
+  wallHeight: 2
+  wallTopOffset: 0.05

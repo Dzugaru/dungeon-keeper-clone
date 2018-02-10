@@ -5,26 +5,25 @@ using UnityEditor;
 using UnityEngine;
 
 using System.IO;
+using System;
 
 public class GemsInStone : EditorWindow
 {
-    struct Range
+    const string settingsAssetPath = "Assets/GemsInStoneSettings.asset";
+    
+    //NOTE: ScriptableObject classes serialized as asset work only if defined in their own files...
+    GemsInStoneSettings settingsHex, settingsWall;
+    GemsInStoneSettings settings { get { return mode == Mode.Hex ? settingsHex : settingsWall; } }
+
+    List<GameObject> currentGemsObjs;
+
+    public enum Mode
     {
-        public int Min, Max;
-        public Range(int min, int max)
-        {
-            this.Min = min;
-            this.Max = max;
-        }
+        Hex,
+        Wall
     }
 
-    int maxNumGems = 10;
-    string meshesFolder = "Resources/GemMeshes";
-    float diskR = 0.05f;
-    float yShiftPercent = 0.2f;
-    float planeY = 0;
-    MinMaxRangeFloat size = new MinMaxRangeFloat(0.02f, 0.02f);
-    Material gemMaterial;
+    public Mode mode;
 
     [MenuItem("Window/Gems in stone")]
     public static void ShowWindow()
@@ -32,33 +31,137 @@ public class GemsInStone : EditorWindow
         EditorWindow.GetWindow(typeof(GemsInStone));
     }
 
+    void OnEnable()
+    {
+        UnityEngine.Object[] settings = AssetDatabase.LoadAllAssetsAtPath(settingsAssetPath);
+        if (settings == null || settings.Length == 0)
+        {
+            settingsHex = CreateInstance<GemsInStoneSettings>();
+            settingsWall = CreateInstance<GemsInStoneSettings>();
+            AssetDatabase.CreateAsset(settingsHex, settingsAssetPath);
+            AssetDatabase.AddObjectToAsset(settingsWall, settingsAssetPath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+        else
+        {
+            settingsHex = (GemsInStoneSettings)settings[0];
+            settingsWall = (GemsInStoneSettings)settings[1];
+        }
+    }
+
+    void OnDestroy()
+    {
+        //NOTE: not sure if done right, but this works
+        EditorUtility.SetDirty(settingsHex);
+        EditorUtility.SetDirty(settingsWall);
+    }
+
+    List<Vector2> SampleHex()
+    {
+        return PoissonDiskWithTilingSampler.SampleHex(settings.diskR, settings.maxNumGems); 
+    }
+
+    List<Vector2> SampleWall()
+    {
+        float width = (MeshTools.HexCellVertices[1] - MeshTools.HexCellVertices[0]).magnitude;
+        float height = settings.wallHeight - settings.wallTopOffset;
+        return PoissonDiskWithTilingSampler.SampleRectMirrorX(settings.diskR, settings.maxNumGems, Vector2.zero, new Vector2(width, height));
+    }
+
+    Vector3 PositionHex(Vector2 sample, float yShift)
+    {
+        return new Vector3(sample.x, yShift, sample.y);
+    }
+
+    Vector3 PositionWall(Vector2 sample, float yShift)
+    {
+        Vector2 origin2d = MeshTools.HexCellVertices[0];
+        Vector2 dir2d = MeshTools.HexCellVertices[1] - origin2d;
+        Vector3 origin = new Vector3(origin2d.x, -settings.wallTopOffset, origin2d.y);
+        Vector3 dirX = new Vector3(dir2d.x, 0, dir2d.y).normalized;
+        Vector3 dirZ = new Vector3(0, -1, 0);
+        Vector3 dirY = Vector3.Cross(dirX, dirZ);
+
+        return origin + sample.x * dirX + sample.y * dirZ + yShift * dirY;
+    }
+
+    void DuplicateToCheckTilingHex(Transform gems)
+    {
+        foreach (HexXY neigh in HexXY.neighbours)
+        {
+            Transform dup = GameObject.Instantiate<GameObject>(gems.gameObject).transform;
+            dup.parent = gems.parent;
+            Vector2 offset = HexXY.ex * neigh.x + HexXY.ey * neigh.y;
+            dup.transform.localPosition += new Vector3(offset.x, 0, offset.y);
+        }
+    }
+
+    void DuplicateToCheckTilingWall(Transform gems)
+    {
+        for (int i = 0; i < 6; i++)
+        {           
+            Transform dup = GameObject.Instantiate<GameObject>(gems.gameObject).transform;
+            dup.parent = gems.parent;
+            dup.transform.localRotation = Quaternion.AngleAxis(60 * i, new Vector3(0, 1, 0));
+        }      
+    }
+
     void Generate()
-    {           
+    {
+        string gemCellsObjectName = "GemCells" + mode.ToString();
+        GameObject existingGemCells = GameObject.Find(gemCellsObjectName);
+        if(existingGemCells != null)        
+            DestroyImmediate(existingGemCells);        
+
+        Transform gemCells = new GameObject(gemCellsObjectName).transform;
         Transform gems = new GameObject("Gems").transform;
-        string[] gemMeshesPaths = Directory.GetFiles(Application.dataPath + "/" + meshesFolder, "*.asset")
+        gems.parent = gemCells;
+
+        string[] gemMeshesPaths = Directory.GetFiles(Application.dataPath + "/" + settings.meshesFolder, "*.asset")
                                            .Select(x => Path.GetFileName(x))
                                            .ToArray();
 
-        Mesh[] gemMeshes = gemMeshesPaths.Select(x => AssetDatabase.LoadAssetAtPath<Mesh>("Assets/" + meshesFolder + "/" + x)).ToArray();
-        List<Vector2> positions = PoissonDiskInHexCellWithTilingSampler.Sample(diskR, maxNumGems);
+        Mesh[] gemMeshes = gemMeshesPaths.Select(x => AssetDatabase.LoadAssetAtPath<Mesh>("Assets/" + settings.meshesFolder + "/" + x)).ToArray();
 
-        foreach(Vector2 pos in positions)
+        List<Vector2> positions = mode == Mode.Hex ? SampleHex() : SampleWall();
+
+        currentGemsObjs = new List<GameObject>(); //save for later combining into a single mesh
+        foreach (Vector2 pos in positions)
         {
-            float exactSize = Random.Range(size.Min, size.Max);
-            float exactYShift = Random.Range(-exactSize * yShiftPercent, exactSize * yShiftPercent);
-            Mesh mesh = gemMeshes[Random.Range(0, gemMeshes.Length - 1)];
+            float exactSize = UnityEngine.Random.Range(settings.size.Min, settings.size.Max);
+            float exactYShift = UnityEngine.Random.Range(-exactSize * settings.yShiftPercent, exactSize * settings.yShiftPercent);
+            Mesh mesh = gemMeshes[UnityEngine.Random.Range(0, gemMeshes.Length - 1)];
 
             GameObject gem = new GameObject("Gem");
+            currentGemsObjs.Add(gem);
             gem.transform.parent = gems;
-            gem.transform.localRotation = Random.rotationUniform;
+            gem.transform.localRotation = UnityEngine.Random.rotationUniform;
             gem.transform.localScale = new Vector3(exactSize, exactSize, exactSize);
-            MeshFilter meshFilter = gem.AddComponent<MeshFilter>(); 
+            MeshFilter meshFilter = gem.AddComponent<MeshFilter>();
             MeshRenderer meshRenderer = gem.AddComponent<MeshRenderer>();
 
             meshFilter.sharedMesh = mesh;
-            gem.transform.localPosition = new Vector3(pos.x, exactYShift, pos.y);
+            gem.transform.localPosition = mode == Mode.Hex ? PositionHex(pos, exactYShift) : PositionWall(pos, exactYShift);
 
-            meshRenderer.sharedMaterial = gemMaterial;
+            meshRenderer.sharedMaterial = settings.gemMaterial;
+        }
+
+        if (mode == Mode.Hex)
+            DuplicateToCheckTilingHex(gems);
+        else
+            DuplicateToCheckTilingWall(gems);       
+    }  
+
+    void CombineMesh()
+    {
+        GameObject existingGemCells = GameObject.Find("GemCells");
+        if (existingGemCells != null)
+        {
+            Mesh combinedMesh = MeshTools.CombineGameObjectMeshes(currentGemsObjs);
+            AssetDatabase.CreateAsset(combinedMesh, "Assets/" + settings.combineMeshOutPath);
+            AssetDatabase.SaveAssets();
+            //DestroyImmediate(existingGemCells);
         }
     }
 
@@ -73,34 +176,55 @@ public class GemsInStone : EditorWindow
 
     void OnGUI()
     {
-        maxNumGems = EditorGUILayout.IntField("Num gems", maxNumGems);
-        diskR = EditorGUILayout.FloatField("Gems min distance", diskR);
-        planeY = EditorGUILayout.FloatField("Plane Y", planeY);
-        yShiftPercent = EditorGUILayout.FloatField("Random Y shift", yShiftPercent);
-        MakeFloatRangeField("Gems size", ref size);
-        gemMaterial = (Material)EditorGUILayout.ObjectField("Gem material", gemMaterial, typeof(Material), false);
+        mode = (Mode)EditorGUILayout.EnumPopup("Mode", mode);
 
-        if (GUILayout.Button("Generate"))
+        settings.maxNumGems = EditorGUILayout.IntField("Num gems", settings.maxNumGems);
+        settings.diskR = EditorGUILayout.FloatField("Gems min distance", settings.diskR);
+        settings.planeY = EditorGUILayout.FloatField("Plane Y", settings.planeY);
+        settings.yShiftPercent = EditorGUILayout.FloatField("Random Y shift", settings.yShiftPercent);
+        MakeFloatRangeField("Gems size", ref settings.size);
+        settings.gemMaterial = (Material)EditorGUILayout.ObjectField("Gem material", settings.gemMaterial, typeof(Material), false);
+
+        if(mode == Mode.Wall)
         {
-            Generate();
+            settings.wallHeight = EditorGUILayout.FloatField("Wall height", settings.wallHeight);
+            settings.wallTopOffset = EditorGUILayout.FloatField("Wall top offset", settings.wallTopOffset);
+        }
+
+        if (GUILayout.Button("Generate and show"))
+        {            
+            Generate();            
+        }
+
+        settings.combineMeshOutPath = EditorGUILayout.TextField("Output mesh path", settings.combineMeshOutPath);
+        if (GUILayout.Button("Combine and save"))
+        {
+            CombineMesh();
         }
     }
 
+   
+
     //Samples a bunch of points no closer than 'diskR' to each other
-    //inside a single hex cell, and takes care so that hex cell can be tiled
-    static class PoissonDiskInHexCellWithTilingSampler
+    //inside a hex or rectangle, and takes care so that configuration can be tiled
+    static class PoissonDiskWithTilingSampler
     {
         static readonly float limitX = 1f / Mathf.Sqrt(3);
         static readonly float limitY = 0.5f;
 
         static Vector2 SampleInsideHex()
-        {            
-            for(; ; )
+        {
+            for (; ; )
             {
-                Vector2 sample = new Vector2(Random.Range(-limitX, limitX), Random.Range(-limitY, limitY));
+                Vector2 sample = new Vector2(UnityEngine.Random.Range(-limitX, limitX), UnityEngine.Random.Range(-limitY, limitY));
                 if (HexXY.FromPlaneCoordinates(sample) == new HexXY(0, 0))
                     return sample;
-            }            
+            }
+        }
+
+        static Vector2 SampleInsideRect(Vector2 min, Vector2 max)
+        {
+            return new Vector2(UnityEngine.Random.Range(min.x, max.x), UnityEngine.Random.Range(min.y, max.y));
         }
 
         static Vector2[] HexMirror(Vector2 v)
@@ -113,10 +237,19 @@ public class GemsInStone : EditorWindow
                 v - HexXY.ey,
                 v + HexXY.ex + HexXY.ey,
                 v - HexXY.ex - HexXY.ey
-            };           
+            };
         }
 
-        public static List<Vector2> Sample(float diskR, int maxN)
+        static Vector2[] RectMirrorX(float width, Vector2 v)
+        {
+            return new[]
+            {
+                v + new Vector2(width, 0),
+                v - new Vector2(width, 0)
+            };
+        }
+
+        public static List<Vector2> SampleHex(float diskR, int maxN)
         {
             const int maxNumTries = 100;
             float sqrDiskR = diskR * diskR;
@@ -145,5 +278,37 @@ public class GemsInStone : EditorWindow
 
             return samples;
         }
-    }    
+
+        public static List<Vector2> SampleRectMirrorX(float diskR, int maxN, Vector2 min, Vector2 max)
+        {
+            const int maxNumTries = 100;
+
+            float width = max.x - min.x;
+            float sqrDiskR = diskR * diskR;
+
+            List<Vector2> mirroredSamples = new List<Vector2>();
+            List<Vector2> samples = new List<Vector2>();
+            for (int i = 0; i < maxN; i++)
+            {
+                Vector2 candidateSample = Vector2.zero;
+                int numTries = 0;
+                for (; numTries < maxNumTries; numTries++)
+                {
+                    candidateSample = SampleInsideRect(min, max);
+                    if (samples.Concat(mirroredSamples).All(s => (s - candidateSample).sqrMagnitude >= sqrDiskR))
+                        break;
+                }
+
+                if (numTries == maxNumTries)
+                    break;
+                else
+                {
+                    samples.Add(candidateSample);
+                    mirroredSamples.AddRange(RectMirrorX(width, candidateSample));
+                }
+            }
+
+            return samples;
+        }
+    }
 }
