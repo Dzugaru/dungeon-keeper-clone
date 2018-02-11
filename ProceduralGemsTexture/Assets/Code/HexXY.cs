@@ -23,6 +23,15 @@ public struct HexXY : IEquatable<HexXY>
         this.y = y;
     }
 
+    public static int DiffToNeighIndex(int dx, int dy)
+    {
+        if(dx == 0)
+            return dy == 1 ? 5 : 2;
+        if (dx == 1)
+            return dy == 1 ? 0 : 1;
+        return dy == -1 ? 3 : 4;        
+    }
+
     public static uint Dist(HexXY a)
     {
         if ((a.x < 0) == (a.y < 0))

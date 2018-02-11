@@ -8,15 +8,10 @@ public class MapCell : ScriptableObject
 {
     public enum State
     {
-        High,
-        Low
+        Low,
+        High
     }
 
-    public State state;
-
-    public static bool CanHaveSharedVertices(MapCell a, MapCell b)
-    {
-        return a.state == b.state;
-    }
+    public State state;   
 }
 
