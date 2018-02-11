@@ -7,17 +7,7 @@ using UnityEngine;
 
 public static class MeshTools
 {
-    static readonly float invSqrt3 = 1f / Mathf.Sqrt(3);
-
-    public static Vector2[] HexCellVertices = new Vector2[]
-    {
-        new Vector2(-0.5f * invSqrt3, 0.5f),
-        new Vector2(0.5f * invSqrt3, 0.5f),
-        new Vector2(1f * invSqrt3, 0),
-        new Vector2(0.5f * invSqrt3, -0.5f),
-        new Vector2(-0.5f * invSqrt3, -0.5f),
-        new Vector2(-1f * invSqrt3, 0),
-    };
+   
 
     public static Mesh CombineGameObjectMeshes(IEnumerable<GameObject> gameObjects)
     {

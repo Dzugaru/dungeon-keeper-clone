@@ -64,7 +64,7 @@ public class GemsInStone : EditorWindow
 
     List<Vector2> SampleWall()
     {
-        float width = (MeshTools.HexCellVertices[1] - MeshTools.HexCellVertices[0]).magnitude;
+        float width = (HexMeshGenerator.HexCellVertices[1] - HexMeshGenerator.HexCellVertices[0]).magnitude;
         float height = settings.wallHeight - settings.wallTopOffset;
         return PoissonDiskWithTilingSampler.SampleRectMirrorX(settings.diskR, settings.maxNumGems, Vector2.zero, new Vector2(width, height));
     }
@@ -76,8 +76,8 @@ public class GemsInStone : EditorWindow
 
     Vector3 PositionWall(Vector2 sample, float yShift)
     {
-        Vector2 origin2d = MeshTools.HexCellVertices[0];
-        Vector2 dir2d = MeshTools.HexCellVertices[1] - origin2d;
+        Vector2 origin2d = HexMeshGenerator.HexCellVertices[0];
+        Vector2 dir2d = HexMeshGenerator.HexCellVertices[1] - origin2d;
         Vector3 origin = new Vector3(origin2d.x, -settings.wallTopOffset, origin2d.y);
         Vector3 dirX = new Vector3(dir2d.x, 0, dir2d.y).normalized;
         Vector3 dirZ = new Vector3(0, -1, 0);
