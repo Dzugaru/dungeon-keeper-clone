@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -6,7 +7,7 @@ public class CameraRig : MonoBehaviour
 {
     Transform swivel, stick;
 
-    float zoom = 1;
+    float zoom = 0;
     float rotationAngle = 0;
 
     public float minZoom, maxZoom, zoomSpeed, rotationSpeed;
@@ -25,7 +26,19 @@ public class CameraRig : MonoBehaviour
 
         float rotationDelta = Input.GetAxis("Rotation");
         if (rotationDelta != 0f)        
-            AdjustRotation(rotationDelta);        
+            AdjustRotation(rotationDelta);
+
+        float dx = Input.GetAxis("Horizontal");
+        float dy = Input.GetAxis("Vertical");
+
+        if(dx != 0 || dy != 0)        
+            AdjustPosition(dx, dy);        
+    }
+
+    void AdjustPosition(float dx, float dy)
+    {        
+        Vector3 disp = transform.localRotation * new Vector3(dx, 0, dy);
+        transform.localPosition = transform.localPosition + disp;
     }
 
     void AdjustZoom(float delta)
