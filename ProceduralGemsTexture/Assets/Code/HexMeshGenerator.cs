@@ -22,24 +22,28 @@ public class HexMeshGenerator
         new Vector2(-1f * invSqrt3, 0),
     };
 
-    class WallVertIndices
+    sealed class WallVertIndices
     {
         public List<int> High = new List<int>();
         public List<int> Low = new List<int>();
     }
 
+    //Info on all vertices than are in a cell.
+    //We use it in constructing triangles indices.
     sealed class CellVertInfo
     {
-        public HexXY Coords; //TODO: remove, not needed by anyone
+        public readonly HexXY Coords; //TODO: remove, not needed by anyone
         public int LastRowIdx = -1;
         public List<int> RowStarts = new List<int>();
         public List<int> Idxs = new List<int>();
 
+        //Info about adjacent cells vertices to construct walls
         public int WallCount = 0;
         public WallVertIndices[] WallIndices;
 
-        public CellVertInfo()
+        public CellVertInfo(HexXY coords)
         {
+            this.Coords = coords;
             WallIndices = new WallVertIndices[6];
             for (int i = 0; i < 6; i++)            
                 WallIndices[i] = new WallVertIndices();            
@@ -53,6 +57,19 @@ public class HexMeshGenerator
                 RowStarts.Add(Idxs.Count);
             }
             Idxs.Add(idx);
+        }
+
+        public void Clear()
+        {
+            LastRowIdx = -1;
+            RowStarts.Clear();
+            Idxs.Clear();
+            for (int i = 0; i < 6; i++)
+            {
+                WallCount = 0;
+                WallIndices[i].High.Clear();
+                WallIndices[i].Low.Clear();               
+            }            
         }
     }
 
@@ -112,13 +129,23 @@ public class HexMeshGenerator
         }
     }
 
-    int patchSize, subDivs, subDivsShift, subDivsMask;
-    CellVertInfo[] cellVertInfos;
+    int patchSize, subDivs, subDivsShift, subDivsMask; 
+    int cxMin, cyMin, cw, ch;
+    Vector2 subdivRhex, subdivRhey;
+
+    CellVertInfo[] cellVertInfos;   
     public List<Vector3> vertices;
     public List<int> triangles;
+    public List<Vector2> uvs;
+
+    //Needed for UVs
+    List<Vector2Int> vertGridCoords;
 
     public List<Vector3> wallVertices;
     public List<int> wallTriangles;
+    public List<Vector2> wallUVs;
+
+    List<VertInStack> vertsInStack;
 
     public HexMeshGenerator(int patchSize, int subDivsShift)
     {
@@ -127,8 +154,36 @@ public class HexMeshGenerator
         this.patchSize = patchSize;
         this.subDivsShift = subDivsShift;
         this.subDivs = 1 << subDivsShift;
-        this.subDivsMask = subDivs - 1;        
-        
+        this.subDivsMask = subDivs - 1;
+
+        this.cxMin = 0;
+        this.cyMin = -patchSize / 3;
+        this.cw =  patchSize + 1;        
+        this.ch = 2 * patchSize / 3 + 1;
+
+        this.subdivRhex = rhex / subDivs;
+        this.subdivRhey = rhey / subDivs;
+
+        this.cellVertInfos = new CellVertInfo[cw * ch];
+        for (int i = 0; i < ch; i++)
+        {
+            for (int j = 0; j < cw; j++)
+            {
+                CellVertInfo cvi = new CellVertInfo(new HexXY(cxMin + j, cyMin + i));       
+                this.cellVertInfos[i * cw + j] = cvi;
+            }
+        }
+
+        this.vertices = new List<Vector3>();
+        this.triangles = new List<int>();
+        this.uvs = new List<Vector2>();
+        this.vertGridCoords = new List<Vector2Int>();
+
+        this.wallVertices = new List<Vector3>();
+        this.wallTriangles = new List<int>();
+        this.wallUVs = new List<Vector2>();
+
+        this.vertsInStack = new List<VertInStack>(3);
     }
 
     //WARNING: this one is insane
@@ -197,180 +252,199 @@ public class HexMeshGenerator
         throw new InvalidProgramException();
     }    
 
-    public void Generate(Map map, int cx0, int cy0, Func<MapCell, bool> drawCell)
+    void Reset()
     {
-        int cxMin = cx0;
-        int cxMax = cx0 + patchSize + 1;
-        int cyMin = cy0 - patchSize / 3;
-        int cyMax = cy0 + patchSize / 3 + 1;
+        foreach (CellVertInfo cvi in cellVertInfos)
+            cvi.Clear();
 
-        int cw = cxMax - cxMin;
-        int ch = cyMax - cyMin;
+        vertices.Clear();
+        triangles.Clear();
+        uvs.Clear();
+        wallVertices.Clear();
+        wallTriangles.Clear();
+        wallUVs.Clear();
+    }
 
-        cellVertInfos = new CellVertInfo[cw * ch];
-        for (int i = 0; i < ch; i++)
+    private void AddNearCellVertices(ref int nextIdx, int row, int col, int k, HexXY cellCoords, MapCell cell)
+    {
+        int sharedIdx = -1;
+        for (int l = 0; l < k; l++)
         {
-            for (int j = 0; j < cw; j++)
+            if (cell.state == vertsInStack[l].cell.state)
             {
-                CellVertInfo cvi = new CellVertInfo();
-                cvi.Coords = new HexXY(cxMin + j, cyMin + i);
-                cellVertInfos[i * cw + j] = cvi;
-            }
-        }
-                
-        
-        vertices = new List<Vector3>();
-        triangles = new List<int>();
-
-        Vector2 subdivRhex = rhex / subDivs;
-        Vector2 subdivRhey = rhey / subDivs;
-
-        List<VertInStack> vertsInStack = new List<VertInStack>(3);        
-
-        //Create vertices and assign to cells
-        int nextIdx = 0;
-        for (int i = 0; i < patchSize * subDivs + 1; i++)
-        {
-            for (int j = 0; j < patchSize * subDivs + 1; j++)
-            {
-                Vector2 planeCoords = i * subdivRhey + j * subdivRhex;
-                NearCells nc = GetNearCells(j, i);
-
-                //keep a list of added on current grid point verts 
-                //for sharing optimization 
-                vertsInStack.Clear();  
-                for (int k = 0; k < nc.Count; k++)
-                {                    
-                    HexXY cellCoords = nc.GetByIndex(k);
-                    MapCell cell = map.GetCell(cellCoords.x, cellCoords.y);
-                    if (!drawCell(cell))
-                        continue;
-                    
-                    int sharedIdx = -1;
-                    for (int l = 0; l < k; l++)                    
-                        if (cell.state == vertsInStack[l].cell.state)
-                        {
-                            sharedIdx = vertsInStack[l].vidx;
-                            break;
-                        }                    
-
-                    int idx;
-                    if(sharedIdx == -1)
-                    {
-                        float y = cell.state == MapCell.State.High ? 1 : 0;
-                        Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
-                        vertices.Add(vertex);
-                        idx = nextIdx;
-                        nextIdx++;                        
-                    }
-                    else
-                    {
-                        idx = sharedIdx;
-                    }
-
-                    vertsInStack.Add(new VertInStack() { cell = cell, vidx = idx, coords = cellCoords });                    
-                    CellVertInfo cvi = cellVertInfos[(cellCoords.y - cyMin) * cw + (cellCoords.x - cxMin)];
-                    cvi.AddIdx(i, idx);                    
-                }
-
-                //Add wall info
-                for (int k = 0; k < vertsInStack.Count; k++)
-                {
-                    VertInStack vis = vertsInStack[k];
-                    CellVertInfo cvi = cellVertInfos[(vis.coords.y - cyMin) * cw + (vis.coords.x - cxMin)];
-
-                    if (vis.cell.state == MapCell.State.High)
-                    {
-                        for (int l = 0; l < vertsInStack.Count; l++)
-                        {
-                            VertInStack vis2 = vertsInStack[l];
-                            if (vis2.cell.state == MapCell.State.Low)
-                            {
-                                HexXY diff = vis2.coords - vis.coords;
-                                int neighIdx = HexXY.DiffToNeighIndex(diff.x, diff.y);
-                                cvi.WallIndices[neighIdx].High.Add(vis.vidx);
-                                cvi.WallIndices[neighIdx].Low.Add(vis2.vidx);
-                                cvi.WallCount++;
-                            }
-                        }
-                    }
-                }
+                sharedIdx = vertsInStack[l].vidx;
+                break;
             }
         }
 
-        //Fill triangles indices separately for each hex cell
-        //using vertIndicesByCell saved data
-        for (int i = 0; i < ch; i++)
+        int idx;
+        if (sharedIdx == -1)
         {
-            for (int j = 0; j < cw; j++)
+            Vector2 planeCoords = row * subdivRhey + col * subdivRhex;
+            float y = cell.state == MapCell.State.High ? 1 : 0;
+            Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
+            vertices.Add(vertex);
+            uvs.Add(new Vector2(vertex.x, vertex.z));
+            vertGridCoords.Add(new Vector2Int(col, row));
+            idx = nextIdx;
+            nextIdx++;
+        }
+        else
+        {
+            idx = sharedIdx;
+        }
+
+        vertsInStack.Add(new VertInStack() { cell = cell, vidx = idx, coords = cellCoords });
+        CellVertInfo cvi = cellVertInfos[(cellCoords.y - cyMin) * cw + (cellCoords.x - cxMin)];
+        cvi.AddIdx(row, idx);
+    }
+
+    private void AddWallInfo()
+    {
+        for (int k = 0; k < vertsInStack.Count; k++)
+        {
+            VertInStack vis = vertsInStack[k];
+            CellVertInfo cvi = cellVertInfos[(vis.coords.y - cyMin) * cw + (vis.coords.x - cxMin)];
+
+            if (vis.cell.state == MapCell.State.High)
             {
-                CellVertInfo cvi = cellVertInfos[i * cw + j];
-                
-                for (int r = 0; r < cvi.RowStarts.Count - 1; r++)
+                for (int l = 0; l < vertsInStack.Count; l++)
                 {
-                    int rowStart = cvi.RowStarts[r];
-                    int nextRowStart = cvi.RowStarts[r + 1];
-                    int afterNextRowStart = r == cvi.RowStarts.Count - 2 ? cvi.Idxs.Count : cvi.RowStarts[r + 2];
-
-                    int rowLen = nextRowStart - rowStart;
-                    int nextRowLen = afterNextRowStart - nextRowStart;
-
-                    //TODO: simplify cases?
-                    if(rowLen == nextRowLen) //this rhombus part always leans to the right
+                    VertInStack vis2 = vertsInStack[l];
+                    if (vis2.cell.state == MapCell.State.Low)
                     {
-                        for (int k = 0; k < rowLen - 1; k++)
-                        {
-                            triangles.Add(cvi.Idxs[rowStart + k]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k]);
-                            triangles.Add(cvi.Idxs[rowStart + k + 1]);
-
-                            triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                        }
-                    }
-                    else if(rowLen < nextRowLen)
-                    {
-                        triangles.Add(cvi.Idxs[rowStart]);
-                        triangles.Add(cvi.Idxs[nextRowStart]);
-                        triangles.Add(cvi.Idxs[nextRowStart + 1]);
-
-                        for (int k = 0; k < rowLen - 1; k++)
-                        {
-                            triangles.Add(cvi.Idxs[rowStart + k]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                            triangles.Add(cvi.Idxs[rowStart + k + 1]);
-
-                            triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k + 2]);
-                        }
-                    }
-                    else
-                    {
-                        for (int k = 0; k < rowLen - 1; k++)
-                        {
-                            triangles.Add(cvi.Idxs[rowStart + k]);
-                            triangles.Add(cvi.Idxs[nextRowStart + k]);
-                            triangles.Add(cvi.Idxs[rowStart + k + 1]);
-
-                            if (k < rowLen - 2)
-                            {
-                                triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                                triangles.Add(cvi.Idxs[nextRowStart + k]);
-                                triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                            }
-                        }
+                        HexXY diff = vis2.coords - vis.coords;
+                        int neighIdx = HexXY.DiffToNeighIndex(diff.x, diff.y);
+                        cvi.WallIndices[neighIdx].High.Add(vis.vidx);
+                        cvi.WallIndices[neighIdx].Low.Add(vis2.vidx);
+                        cvi.WallCount++;
                     }
                 }
             }
         }
     }
 
-    public void GenerateWalls()
+    void CreateVerticesAndAssignToCells(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, bool> drawCell)
     {
-        wallVertices = new List<Vector3>();
-        wallTriangles = new List<int>();
+        int nextIdx = 0;
+        for (int i = 0; i < patchSize * subDivs + 1; i++)
+        {
+            for (int j = 0; j < patchSize * subDivs + 1; j++)
+            {
+                
+                NearCells nc = GetNearCells(j, i);
+
+                vertsInStack.Clear();
+                for (int k = 0; k < nc.Count; k++)
+                {
+                    HexXY cellCoords = nc.GetByIndex(k);
+                    MapCell cell = map.GetCell(mapOffsetX + cellCoords.x, mapOffsetY + cellCoords.y);
+                    if (!drawCell(cell))
+                        continue;
+
+                    AddNearCellVertices(ref nextIdx, i, j, k, cellCoords, cell);
+                }
+                
+                AddWallInfo();
+            }
+        }
+    }
+
+    public void Generate(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, bool> drawCell)
+    {
+        Reset();
+        CreateVerticesAndAssignToCells(map, mapOffsetX, mapOffsetY, drawCell);      
+
+        //Fill triangles indices separately for each hex cell
+        //using vertIndicesByCell saved data
+        for (int i = 0; i < ch; i++)        
+            for (int j = 0; j < cw; j++)
+                FillTriangleIndices(cellVertInfos[i * cw + j]);
+
+        GenerateWalls();
+    }
+
+    private void FillTriangleIndices(CellVertInfo cvi)
+    {
+        for (int r = 0; r < cvi.RowStarts.Count - 1; r++)
+        {
+            int rowStart = cvi.RowStarts[r];
+            int nextRowStart = cvi.RowStarts[r + 1];
+            int afterNextRowStart = r == cvi.RowStarts.Count - 2 ? cvi.Idxs.Count : cvi.RowStarts[r + 2];
+
+            int rowLen = nextRowStart - rowStart;
+            int nextRowLen = afterNextRowStart - nextRowStart;
+
+            //TODO: simplify cases?
+            if (rowLen == nextRowLen) //this rhombus part always leans to the right
+            {
+                for (int k = 0; k < rowLen - 1; k++)
+                {
+                    triangles.Add(cvi.Idxs[rowStart + k]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+
+                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                }
+            }
+            else if (rowLen < nextRowLen)
+            {
+                triangles.Add(cvi.Idxs[rowStart]);
+                triangles.Add(cvi.Idxs[nextRowStart]);
+                triangles.Add(cvi.Idxs[nextRowStart + 1]);
+
+                for (int k = 0; k < rowLen - 1; k++)
+                {
+                    triangles.Add(cvi.Idxs[rowStart + k]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+
+                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k + 2]);
+                }
+            }
+            else
+            {
+                for (int k = 0; k < rowLen - 1; k++)
+                {
+                    triangles.Add(cvi.Idxs[rowStart + k]);
+                    triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+
+                    if (k < rowLen - 2)
+                    {
+                        triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                        triangles.Add(cvi.Idxs[nextRowStart + k]);
+                        triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    }
+                }
+            }
+        }
+    }
+
+    //WARNING: this one is eldritch too
+    //---
+    //We (almost) plane-project UVs on walls from 2y + x direction (perpendicular to direction of 2 and 5 neighs),
+    //but we must take care of 0,1,3,4 neigh walls squeezing.
+    //This can be done by carefully inspecting areas when 2y + x should be un-squeezed
+    float WallUForGridCoords(Vector2Int gridCoords)
+    {   
+        int u = gridCoords.y * 2 + gridCoords.x;
+        int iu = u >> subDivsShift;
+        int fu = u & subDivsMask;
+
+        if ((iu % 3) == 0)
+            fu = fu + (subDivs >> 1);
+        iu -= iu / 3;
+
+        return iu + (float)fu / subDivs;  
+    }
+
+    private void GenerateWalls()
+    {        
         int nextIdx = 0;
 
         int cw = patchSize + 1;
@@ -389,8 +463,19 @@ public class HexMeshGenerator
 
                         for (int l = 0; l < wis.High.Count; l++)
                         {
-                            wallVertices.Add(vertices[wis.High[l]]);
-                            wallVertices.Add(vertices[wis.Low[l]]);                            
+                            //Verts
+                            int highIdx = wis.High[l];
+                            int lowIdx = wis.Low[l];
+                            Vector3 highVert = vertices[highIdx];
+                            Vector3 lowVert = vertices[lowIdx];                           
+
+                            wallVertices.Add(highVert);
+                            wallVertices.Add(lowVert);
+                         
+                            //UVs
+                            float u = WallUForGridCoords(vertGridCoords[highIdx]);
+                            wallUVs.Add(new Vector2(u, 1));
+                            wallUVs.Add(new Vector2(u, 0));
                         }
 
                         for (int l = 0; l < wis.High.Count - 1; l++)
