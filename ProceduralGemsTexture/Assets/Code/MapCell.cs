@@ -15,3 +15,15 @@ public class MapCell : ScriptableObject
     public State state;   
 }
 
+public struct MapCellAndCoords
+{
+    public MapCell Cell;
+    public HexXY Coords;
+
+    public MapCellAndCoords(MapCell cell, HexXY coords)
+    {
+        this.Cell = cell;
+        this.Coords = coords;
+    }
+}
+

@@ -17,6 +17,11 @@ public class Map : ScriptableObject
         return cells[(y - y0) * w + (x - x0)];
     }    
 
+    public MapCell GetCell(HexXY c)
+    {
+        return GetCell(c.x, c.y);
+    }
+
     public void Init(int x0, int y0, int w, int h)
     {
         this.x0 = x0;

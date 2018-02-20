@@ -75,6 +75,7 @@ public class HexMeshGenerator
             LastRowIdx = -1;
             RowStarts.Clear();
             Idxs.Clear();
+            Mesh = null;
             for (int i = 0; i < 6; i++)
             {
                 WallCount = 0;
