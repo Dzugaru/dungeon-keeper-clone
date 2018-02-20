@@ -10,7 +10,7 @@ public class CameraRig : MonoBehaviour
     float zoom = 0;
     float rotationAngle = 0;
 
-    public float minZoom, maxZoom, zoomSpeed, rotationSpeed;
+    public float minZoom, maxZoom, zoomSpeed, rotationSpeed, scrollSpeed;
 
 	void Start()
     {
@@ -37,7 +37,7 @@ public class CameraRig : MonoBehaviour
 
     void AdjustPosition(float dx, float dy)
     {        
-        Vector3 disp = transform.localRotation * new Vector3(dx, 0, dy);
+        Vector3 disp = transform.localRotation * new Vector3(dx, 0, dy) * scrollSpeed;
         transform.localPosition = transform.localPosition + disp;
     }
 

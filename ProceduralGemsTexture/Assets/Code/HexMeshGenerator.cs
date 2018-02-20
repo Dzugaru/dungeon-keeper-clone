@@ -22,10 +22,11 @@ public class HexMeshGenerator
         new Vector2(-1f * invSqrt3, 0),
     };
 
-    sealed class WallVertIndices
+    sealed class WallVerticesInfo
     {
-        public List<int> High = new List<int>();
-        public List<int> Low = new List<int>();
+        public List<Vector3> High = new List<Vector3>();
+        public List<Vector3> Low = new List<Vector3>();
+        public List<Vector2Int> GridCoords = new List<Vector2Int>();
     }
 
     //Info on all vertices than are in a cell.
@@ -33,20 +34,30 @@ public class HexMeshGenerator
     sealed class CellVertInfo
     {
         public readonly HexXY Coords; //TODO: remove, not needed by anyone
+        public MeshData Mesh;
         public int LastRowIdx = -1;
         public List<int> RowStarts = new List<int>();
         public List<int> Idxs = new List<int>();
 
         //Info about adjacent cells vertices to construct walls
         public int WallCount = 0;
-        public WallVertIndices[] WallIndices;
+        public WallVerticesInfo[] WallVertices;
 
         public CellVertInfo(HexXY coords)
         {
             this.Coords = coords;
-            WallIndices = new WallVertIndices[6];
+            WallVertices = new WallVerticesInfo[6];
             for (int i = 0; i < 6; i++)            
-                WallIndices[i] = new WallVertIndices();            
+                WallVertices[i] = new WallVerticesInfo();            
+        }
+
+        public void SetMesh(MeshData mesh)
+        {
+            //DEBUG---
+            if (Mesh != null && mesh != this.Mesh)
+                throw new InvalidProgramException();
+            //--------
+            this.Mesh = mesh;
         }
 
         public void AddIdx(int row, int idx)
@@ -67,8 +78,9 @@ public class HexMeshGenerator
             for (int i = 0; i < 6; i++)
             {
                 WallCount = 0;
-                WallIndices[i].High.Clear();
-                WallIndices[i].Low.Clear();               
+                WallVertices[i].High.Clear();
+                WallVertices[i].Low.Clear();
+                WallVertices[i].GridCoords.Clear();
             }            
         }
     }
@@ -77,6 +89,7 @@ public class HexMeshGenerator
     {
         public MapCell cell;
         public HexXY coords;
+        public MeshData mesh;
         public int vidx;
     }
 
@@ -133,19 +146,12 @@ public class HexMeshGenerator
     int cxMin, cyMin, cw, ch;
     Vector2 subdivRhex, subdivRhey;
 
-    CellVertInfo[] cellVertInfos;   
-    public List<Vector3> vertices;
-    public List<int> triangles;
-    public List<Vector2> uvs;
-
-    //Needed for UVs
-    List<Vector2Int> vertGridCoords;
-
-    public List<Vector3> wallVertices;
-    public List<int> wallTriangles;
-    public List<Vector2> wallUVs;
-
+    CellVertInfo[] cellVertInfos;
     List<VertInStack> vertsInStack;
+
+    Map map;
+    int mapOffsetX, mapOffsetY;    
+    Func<MapCell, MeshData> selectCellMesh;
 
     public HexMeshGenerator(int patchSize, int subDivsShift)
     {
@@ -173,16 +179,6 @@ public class HexMeshGenerator
                 this.cellVertInfos[i * cw + j] = cvi;
             }
         }
-
-        this.vertices = new List<Vector3>();
-        this.triangles = new List<int>();
-        this.uvs = new List<Vector2>();
-        this.vertGridCoords = new List<Vector2Int>();
-
-        this.wallVertices = new List<Vector3>();
-        this.wallTriangles = new List<int>();
-        this.wallUVs = new List<Vector2>();
-
         this.vertsInStack = new List<VertInStack>(3);
     }
 
@@ -256,21 +252,16 @@ public class HexMeshGenerator
     {
         foreach (CellVertInfo cvi in cellVertInfos)
             cvi.Clear();
-
-        vertices.Clear();
-        triangles.Clear();
-        uvs.Clear();
-        wallVertices.Clear();
-        wallTriangles.Clear();
-        wallUVs.Clear();
     }
 
-    private void AddNearCellVertices(ref int nextIdx, int row, int col, int k, HexXY cellCoords, MapCell cell)
+    private void AddNearCellVertices(int row, int col, HexXY cellCoords, MapCell cell)
     {
+        MeshData mesh = selectCellMesh(cell);
+
         int sharedIdx = -1;
-        for (int l = 0; l < k; l++)
+        for (int l = 0; l < vertsInStack.Count; l++)
         {
-            if (cell.state == vertsInStack[l].cell.state)
+            if (vertsInStack[l].mesh == mesh)
             {
                 sharedIdx = vertsInStack[l].vidx;
                 break;
@@ -280,26 +271,25 @@ public class HexMeshGenerator
         int idx;
         if (sharedIdx == -1)
         {
+            idx = mesh.vertices.Count;
             Vector2 planeCoords = row * subdivRhey + col * subdivRhex;
             float y = cell.state == MapCell.State.High ? 1 : 0;
             Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
-            vertices.Add(vertex);
-            uvs.Add(new Vector2(vertex.x, vertex.z));
-            vertGridCoords.Add(new Vector2Int(col, row));
-            idx = nextIdx;
-            nextIdx++;
+            mesh.vertices.Add(vertex);
+            mesh.uvs.Add(new Vector2(vertex.x, vertex.z));            
         }
         else
         {
             idx = sharedIdx;
         }
 
-        vertsInStack.Add(new VertInStack() { cell = cell, vidx = idx, coords = cellCoords });
+        vertsInStack.Add(new VertInStack() { cell = cell, mesh = mesh, vidx = idx, coords = cellCoords });
         CellVertInfo cvi = cellVertInfos[(cellCoords.y - cyMin) * cw + (cellCoords.x - cxMin)];
+        cvi.SetMesh(mesh);
         cvi.AddIdx(row, idx);
     }
 
-    private void AddWallInfo()
+    private void AddWallInfo(int i, int j)
     {
         for (int k = 0; k < vertsInStack.Count; k++)
         {
@@ -315,8 +305,9 @@ public class HexMeshGenerator
                     {
                         HexXY diff = vis2.coords - vis.coords;
                         int neighIdx = HexXY.DiffToNeighIndex(diff.x, diff.y);
-                        cvi.WallIndices[neighIdx].High.Add(vis.vidx);
-                        cvi.WallIndices[neighIdx].Low.Add(vis2.vidx);
+                        cvi.WallVertices[neighIdx].High.Add(vis.mesh.vertices[vis.vidx]);
+                        cvi.WallVertices[neighIdx].Low.Add(vis2.mesh.vertices[vis2.vidx]);
+                        cvi.WallVertices[neighIdx].GridCoords.Add(new Vector2Int(i, j));
                         cvi.WallCount++;
                     }
                 }
@@ -324,48 +315,46 @@ public class HexMeshGenerator
         }
     }
 
-    void CreateVerticesAndAssignToCells(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, bool> drawCell)
-    {
-        int nextIdx = 0;
+    void CreateVerticesAndAssignToCells()
+    {        
         for (int i = 0; i < patchSize * subDivs + 1; i++)
         {
             for (int j = 0; j < patchSize * subDivs + 1; j++)
-            {
-                
+            {                
                 NearCells nc = GetNearCells(j, i);
-
                 vertsInStack.Clear();
                 for (int k = 0; k < nc.Count; k++)
                 {
                     HexXY cellCoords = nc.GetByIndex(k);
                     MapCell cell = map.GetCell(mapOffsetX + cellCoords.x, mapOffsetY + cellCoords.y);
-                    if (!drawCell(cell))
-                        continue;
-
-                    AddNearCellVertices(ref nextIdx, i, j, k, cellCoords, cell);
-                }
+                    AddNearCellVertices(i, j, cellCoords, cell);
+                }                
                 
-                AddWallInfo();
+                AddWallInfo(i, j);  
             }
         }
     }
 
-    public void Generate(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, bool> drawCell)
+    public void Generate(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, MeshData> selectCellMesh)
     {
-        Reset();
-        CreateVerticesAndAssignToCells(map, mapOffsetX, mapOffsetY, drawCell);      
+        Reset();       
+        this.map = map;
+        this.mapOffsetX = mapOffsetX;
+        this.mapOffsetY = mapOffsetY;
+        this.selectCellMesh = selectCellMesh;
+
+        CreateVerticesAndAssignToCells();      
 
         //Fill triangles indices separately for each hex cell
         //using vertIndicesByCell saved data
         for (int i = 0; i < ch; i++)        
             for (int j = 0; j < cw; j++)
-                FillTriangleIndices(cellVertInfos[i * cw + j]);
-
-        GenerateWalls();
+                FillTriangleIndices(cellVertInfos[i * cw + j]);        
     }
 
     private void FillTriangleIndices(CellVertInfo cvi)
     {
+        MeshData mesh = cvi.Mesh;
         for (int r = 0; r < cvi.RowStarts.Count - 1; r++)
         {
             int rowStart = cvi.RowStarts[r];
@@ -380,45 +369,45 @@ public class HexMeshGenerator
             {
                 for (int k = 0; k < rowLen - 1; k++)
                 {
-                    triangles.Add(cvi.Idxs[rowStart + k]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k]);
-                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
 
-                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
                 }
             }
             else if (rowLen < nextRowLen)
             {
-                triangles.Add(cvi.Idxs[rowStart]);
-                triangles.Add(cvi.Idxs[nextRowStart]);
-                triangles.Add(cvi.Idxs[nextRowStart + 1]);
+                mesh.triangles.Add(cvi.Idxs[rowStart]);
+                mesh.triangles.Add(cvi.Idxs[nextRowStart]);
+                mesh.triangles.Add(cvi.Idxs[nextRowStart + 1]);
 
                 for (int k = 0; k < rowLen - 1; k++)
                 {
-                    triangles.Add(cvi.Idxs[rowStart + k]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
 
-                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k + 2]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k + 2]);
                 }
             }
             else
             {
                 for (int k = 0; k < rowLen - 1; k++)
                 {
-                    triangles.Add(cvi.Idxs[rowStart + k]);
-                    triangles.Add(cvi.Idxs[nextRowStart + k]);
-                    triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[nextRowStart + k]);
+                    mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
 
                     if (k < rowLen - 2)
                     {
-                        triangles.Add(cvi.Idxs[rowStart + k + 1]);
-                        triangles.Add(cvi.Idxs[nextRowStart + k]);
-                        triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
+                        mesh.triangles.Add(cvi.Idxs[rowStart + k + 1]);
+                        mesh.triangles.Add(cvi.Idxs[nextRowStart + k]);
+                        mesh.triangles.Add(cvi.Idxs[nextRowStart + k + 1]);
                     }
                 }
             }
@@ -443,8 +432,8 @@ public class HexMeshGenerator
         return iu + (float)fu / subDivs;  
     }
 
-    private void GenerateWalls()
-    {        
+    public void GenerateWalls(MeshData wallMesh)
+    {
         int nextIdx = 0;
 
         int cw = patchSize + 1;
@@ -455,27 +444,25 @@ public class HexMeshGenerator
             for (int j = 0; j < cw; j++)
             {
                 CellVertInfo cvi = cellVertInfos[i * cw + j];
-                if(cvi.WallCount > 1)
+                if (cvi.WallCount > 1)
                 {
                     for (int k = 0; k < 6; k++)
                     {
-                        WallVertIndices wis = cvi.WallIndices[k];
+                        WallVerticesInfo wis = cvi.WallVertices[k];
 
                         for (int l = 0; l < wis.High.Count; l++)
                         {
                             //Verts
-                            int highIdx = wis.High[l];
-                            int lowIdx = wis.Low[l];
-                            Vector3 highVert = vertices[highIdx];
-                            Vector3 lowVert = vertices[lowIdx];                           
+                            Vector3 highVert = wis.High[l];
+                            Vector3 lowVert = wis.Low[l];
 
-                            wallVertices.Add(highVert);
-                            wallVertices.Add(lowVert);
-                         
+                            wallMesh.vertices.Add(highVert);
+                            wallMesh.vertices.Add(lowVert);
+
                             //UVs
-                            float u = WallUForGridCoords(vertGridCoords[highIdx]);
-                            wallUVs.Add(new Vector2(u, 1));
-                            wallUVs.Add(new Vector2(u, 0));
+                            float u = WallUForGridCoords(wis.GridCoords[l]);
+                            wallMesh.uvs.Add(new Vector2(u, 1));
+                            wallMesh.uvs.Add(new Vector2(u, 0));
                         }
 
                         for (int l = 0; l < wis.High.Count - 1; l++)
@@ -484,29 +471,29 @@ public class HexMeshGenerator
                             //filling order in main mesh generation above
                             if (k >= 1 && k <= 3)
                             {
-                                wallTriangles.Add(nextIdx);
-                                wallTriangles.Add(nextIdx + 3);
-                                wallTriangles.Add(nextIdx + 1);
+                                wallMesh.triangles.Add(nextIdx);
+                                wallMesh.triangles.Add(nextIdx + 3);
+                                wallMesh.triangles.Add(nextIdx + 1);
 
-                                wallTriangles.Add(nextIdx);
-                                wallTriangles.Add(nextIdx + 2);
-                                wallTriangles.Add(nextIdx + 3);
+                                wallMesh.triangles.Add(nextIdx);
+                                wallMesh.triangles.Add(nextIdx + 2);
+                                wallMesh.triangles.Add(nextIdx + 3);
                             }
                             else
                             {
-                                wallTriangles.Add(nextIdx);
-                                wallTriangles.Add(nextIdx + 1);
-                                wallTriangles.Add(nextIdx + 3);
+                                wallMesh.triangles.Add(nextIdx);
+                                wallMesh.triangles.Add(nextIdx + 1);
+                                wallMesh.triangles.Add(nextIdx + 3);
 
-                                wallTriangles.Add(nextIdx);
-                                wallTriangles.Add(nextIdx + 3);
-                                wallTriangles.Add(nextIdx + 2);
+                                wallMesh.triangles.Add(nextIdx);
+                                wallMesh.triangles.Add(nextIdx + 3);
+                                wallMesh.triangles.Add(nextIdx + 2);
                             }
 
                             nextIdx += 2;
                         }
 
-                        nextIdx = wallVertices.Count;
+                        nextIdx = wallMesh.vertices.Count;
                     }
                 }
             }
