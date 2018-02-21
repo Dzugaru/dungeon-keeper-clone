@@ -12,13 +12,13 @@ public class HexMeshGeneratorTests : MonoBehaviour
         generator = new HexMeshGenerator(18, 1);        
 
         map = ScriptableObject.CreateInstance<Map>();
-        map.Init(0, -10, 20, 20);
-        map.GetCell(1, 0).state = MapCell.State.High;
-        map.GetCell(6, 2).state = MapCell.State.High;
-        map.GetCell(7, 2).state = MapCell.State.High;
-        map.GetCell(7, 1).state = MapCell.State.High;
-        map.GetCell(8, 1).state = MapCell.State.High;
-        map.GetCell(10, -2).state = MapCell.State.High;
+        map.New(10);
+        map.GetCell(1, 0).state = MapCell.State.Full;
+        map.GetCell(6, 2).state = MapCell.State.Full;
+        map.GetCell(7, 2).state = MapCell.State.Excavated;
+        map.GetCell(7, 1).state = MapCell.State.Full;
+        map.GetCell(8, 1).state = MapCell.State.Full;
+        map.GetCell(10, -2).state = MapCell.State.Full;
 
         RedrawMeshes();
     }	
@@ -27,7 +27,7 @@ public class HexMeshGeneratorTests : MonoBehaviour
     {
         MeshData floor = new MeshData(), ceiling = new MeshData(), walls = new MeshData();
 
-        generator.Generate(map, 0, 0, c => c.state == MapCell.State.Low ? floor : ceiling);
+        generator.Generate(map, 0, 0, c => c.state == MapCell.State.Excavated ? floor : ceiling);
         generator.GenerateWalls(walls);
 
         Mesh floorMesh = new Mesh();

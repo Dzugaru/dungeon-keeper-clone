@@ -27,12 +27,12 @@ public class MouseControls : MonoBehaviour
 
         ceiling.Raycast(ray, out dist);
         MapCellAndCoords cell = MapCellFromPoint(ray.origin + dist * ray.direction);
-        if (cell.Cell.state == MapCell.State.Low)
+        if (cell.Cell.state == MapCell.State.Excavated)
         {
             floor.Raycast(ray, out dist);
             cell = MapCellFromPoint(ray.origin + dist * ray.direction);
 
-            if (cell.Cell.state == MapCell.State.Low)
+            if (cell.Cell.state == MapCell.State.Excavated)
                 return cell;
         }
         else
@@ -48,7 +48,7 @@ public class MouseControls : MonoBehaviour
         if(cc != null)
         {
             MapCell cell = map.GetCell(cc.Value.Coords);
-            cell.state = cell.state == MapCell.State.High ? MapCell.State.Low : MapCell.State.High;
+            cell.state = cell.state == MapCell.State.Full ? MapCell.State.Excavated : MapCell.State.Full;
             GetComponent<HexMeshGeneratorTests>().RedrawMeshes();
         }
         //Debug.Log(cell);        

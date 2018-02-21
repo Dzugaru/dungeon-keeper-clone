@@ -4,15 +4,24 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
-public class MapCell : ScriptableObject
+[Serializable]
+public class MapCell
 {
     public enum State
-    {
-        Low,
-        High
+    {        
+        Full,
+        Excavated
     }
 
-    public State state;   
+    public enum CellType
+    {
+        Earth,
+        Stone       
+    }
+
+    public bool immutable;
+    public State state;
+    public CellType type;
 }
 
 public struct MapCellAndCoords

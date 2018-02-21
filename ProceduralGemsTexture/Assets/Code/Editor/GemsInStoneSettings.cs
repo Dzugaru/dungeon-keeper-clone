@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
+[Serializable]
 class GemsInStoneSettings : ScriptableObject
 {
     public int maxNumGems = 10;

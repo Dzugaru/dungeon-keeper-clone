@@ -4,17 +4,26 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
+[Serializable]
 public class Map : ScriptableObject
 {
+    int x0, y0, w;
+
     [SerializeField]
-    int x0, y0, w, h;
+    int size;
 
     [SerializeField]
     MapCell[] cells;
 
+    [SerializeField]
+    MapCell externalCell;
+
     public MapCell GetCell(int x, int y)
     {
-        return cells[(y - y0) * w + (x - x0)];
+        if (y < y0 || y >= y0 + w || x < x0 || x >= x0 + w)
+            return externalCell;
+        else
+            return cells[(y - y0) * w + (x - x0)];
     }    
 
     public MapCell GetCell(HexXY c)
@@ -22,18 +31,39 @@ public class Map : ScriptableObject
         return GetCell(c.x, c.y);
     }
 
-    public void Init(int x0, int y0, int w, int h)
+    private void OnEnable()
     {
-        this.x0 = x0;
-        this.y0 = y0;
-        this.w = w;
-        this.h = h;
+        InitSizes();
+    }
 
-        this.cells = new MapCell[w * h];
+    void InitSizes()
+    {
+        x0 = -size;
+        y0 = -size;
+        w = 2 * size + 1;
+    }
 
-        for (int i = 0; i < h; i++)        
-            for (int j = 0; j < w; j++)             
-                this.cells[i * w + j] = CreateInstance<MapCell>();
+    public void New(int size)
+    {
+        this.size = size;
+
+        InitSizes();
+
+        HexXY center = new HexXY(size, size);
+
+        externalCell = new MapCell();
+        externalCell.immutable = true;
+        externalCell.type = MapCell.CellType.Stone;
+
+        cells = new MapCell[w * w];
+        for (int i = 0; i < w; i++)
+            for (int j = 0; j < w; j++)
+            {
+                if (HexXY.Dist(new HexXY(j, i), center) > size) 
+                    cells[i * w + j] = externalCell; //shape map like a big hexagon
+                else
+                    cells[i * w + j] = new MapCell();
+            }
     }
 }
 

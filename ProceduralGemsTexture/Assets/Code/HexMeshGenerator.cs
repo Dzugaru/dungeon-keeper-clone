@@ -274,7 +274,7 @@ public class HexMeshGenerator
         {
             idx = mesh.vertices.Count;
             Vector2 planeCoords = row * subdivRhey + col * subdivRhex;
-            float y = cell.state == MapCell.State.High ? 1 : 0;
+            float y = cell.state == MapCell.State.Full ? 1 : 0;
             Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
             mesh.vertices.Add(vertex);
             mesh.uvs.Add(new Vector2(vertex.x, vertex.z));            
@@ -297,12 +297,12 @@ public class HexMeshGenerator
             VertInStack vis = vertsInStack[k];
             CellVertInfo cvi = cellVertInfos[(vis.coords.y - cyMin) * cw + (vis.coords.x - cxMin)];
 
-            if (vis.cell.state == MapCell.State.High)
+            if (vis.cell.state == MapCell.State.Full)
             {
                 for (int l = 0; l < vertsInStack.Count; l++)
                 {
                     VertInStack vis2 = vertsInStack[l];
-                    if (vis2.cell.state == MapCell.State.Low)
+                    if (vis2.cell.state == MapCell.State.Excavated)
                     {
                         HexXY diff = vis2.coords - vis.coords;
                         int neighIdx = HexXY.DiffToNeighIndex(diff.x, diff.y);
