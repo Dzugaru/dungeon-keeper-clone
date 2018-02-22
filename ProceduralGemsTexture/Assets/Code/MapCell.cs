@@ -18,8 +18,7 @@ public class MapCell
         Earth,
         Stone       
     }
-
-    public bool immutable;
+    
     public State state;
     public CellType type;
 }

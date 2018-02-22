@@ -6,24 +6,21 @@ using UnityEngine;
 
 [Serializable]
 public class Map : ScriptableObject
-{
-    int x0, y0, w;
-
-    [SerializeField]
-    int size;
+{   
+    public int size;    
 
     [SerializeField]
     MapCell[] cells;
 
     [SerializeField]
-    MapCell externalCell;
+    public MapCell externalCell;
 
     public MapCell GetCell(int x, int y)
     {
-        if (y < y0 || y >= y0 + w || x < x0 || x >= x0 + w)
+        if (y < 0 || y >= size || x < 0 || x >= size)
             return externalCell;
         else
-            return cells[(y - y0) * w + (x - x0)];
+            return cells[y * size + x];
     }    
 
     public MapCell GetCell(HexXY c)
@@ -33,37 +30,36 @@ public class Map : ScriptableObject
 
     private void OnEnable()
     {
-        InitSizes();
-    }
+        
+    }   
 
-    void InitSizes()
+    public void New(int radius)
     {
-        x0 = -size;
-        y0 = -size;
-        w = 2 * size + 1;
-    }
-
-    public void New(int size)
-    {
-        this.size = size;
-
-        InitSizes();
+        this.size = 2 * radius + 1;        
 
         HexXY center = new HexXY(size, size);
 
-        externalCell = new MapCell();
-        externalCell.immutable = true;
+        externalCell = new MapCell();        
         externalCell.type = MapCell.CellType.Stone;
 
-        cells = new MapCell[w * w];
-        for (int i = 0; i < w; i++)
-            for (int j = 0; j < w; j++)
+        cells = new MapCell[size * size];
+        for (int i = 0; i < size; i++)
+            for (int j = 0; j < size; j++)
             {
                 if (HexXY.Dist(new HexXY(j, i), center) > size) 
-                    cells[i * w + j] = externalCell; //shape map like a big hexagon
+                    cells[i * size + j] = externalCell; //shape map like a big hexagon
                 else
-                    cells[i * w + j] = new MapCell();
+                    cells[i * size + j] = new MapCell();
             }
+    }
+
+    public IEnumerable<MapCellAndCoords> AllCells()
+    {
+        HexXY center = new HexXY(size, size);
+        for (int i = 0; i < size; i++)
+            for (int j = 0; j < size; j++)
+                if (HexXY.Dist(new HexXY(j, i), center) <= size)
+                    yield return new MapCellAndCoords(cells[i * size + j], new HexXY(j, i));
     }
 }
 

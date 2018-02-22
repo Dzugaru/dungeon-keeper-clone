@@ -12,14 +12,22 @@ public class MapEditor : MonoBehaviour
 
     public float mapScale = 10f;
     public int newMapSize = 5;
+    public int meshPatchSize = 18;
     public Map map;
+
+    Transform[] mapMeshObjs;
+
+
 
     void OnValidate()
     {
         floor = new Plane(Vector3.up, Vector3.zero);
-        ceiling = new Plane(Vector3.up, new Vector3(0, mapScale, 0));
+        ceiling = new Plane(Vector3.up, new Vector3(0, mapScale, 0));       
+    }
 
-        //Debug.Log("updated");
+    void CreateMapMeshes()
+    {
+        int meshesW = 3 * map.size / meshPatchSize;
     }
 }
 
