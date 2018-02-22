@@ -37,16 +37,19 @@ public class Map : ScriptableObject
     {
         this.size = 2 * radius + 1;        
 
-        HexXY center = new HexXY(size, size);
+        HexXY center = new HexXY(radius, radius);
 
         externalCell = new MapCell();        
         externalCell.type = MapCell.CellType.Stone;
+
+        //TODO: temporary, when drawing in editor
+        //externalCell.state = MapCell.State.Excavated; 
 
         cells = new MapCell[size * size];
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++)
             {
-                if (HexXY.Dist(new HexXY(j, i), center) > size) 
+                if (HexXY.Dist(new HexXY(j, i), center) > radius) 
                     cells[i * size + j] = externalCell; //shape map like a big hexagon
                 else
                     cells[i * size + j] = new MapCell();

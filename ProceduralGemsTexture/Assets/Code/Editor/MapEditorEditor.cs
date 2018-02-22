@@ -84,9 +84,13 @@ public class MapEditorEditor : Editor
         
         if(GUILayout.Button("Create map"))
         {
+            AssetDatabase.DeleteAsset("Assets/map.asset");
+
             editor.map = CreateInstance<Map>();
-            editor.map.New(editor.newMapSize);
+            editor.map.New(editor.newMapRadius);
             EditorUtility.SetDirty(editor.map);
+
+            editor.CreateMapMeshes();
 
             AssetDatabase.CreateAsset(editor.map, "Assets/map.asset");
             AssetDatabase.SaveAssets();

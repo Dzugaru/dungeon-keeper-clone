@@ -9,8 +9,8 @@ public class HexMeshGenerator
     static readonly float invSqrt3 = 1f / Mathf.Sqrt(3);
 
     //rhombus grid basis vectors
-    static readonly Vector2 rhex = new Vector2(1f * invSqrt3, 0);
-    static readonly Vector2 rhey = new Vector2(0.5f * invSqrt3, 0.5f);
+    public static readonly Vector2 rhex = new Vector2(1f * invSqrt3, 0);
+    public static readonly Vector2 rhey = new Vector2(0.5f * invSqrt3, 0.5f);
 
     public static Vector2[] HexCellVertices = new Vector2[]
     {
@@ -151,8 +151,10 @@ public class HexMeshGenerator
     List<VertInStack> vertsInStack;
 
     Map map;
-    int mapOffsetX, mapOffsetY;    
+    int patchOffsetX, patchOffsetY, mapOffsetX, mapOffsetY;    
     Func<MapCell, MeshData> selectCellMesh;
+
+    PerlinNoise noise;
 
     public HexMeshGenerator(int patchSize, int subDivsShift)
     {
@@ -181,6 +183,41 @@ public class HexMeshGenerator
             }
         }
         this.vertsInStack = new List<VertInStack>(3);
+
+        noise = new PerlinNoise();
+    }
+
+    public static void ListPatchIndicesForCell(int patchSize, HexXY c, List<Vector2Int> meshPartsIdxs)
+    {
+        meshPartsIdxs.Clear();
+
+        int x = c.x - 2 * c.y;
+        int y = c.x + c.y;
+
+        int ix;
+        if (x >= 0)
+            ix = x / patchSize;
+        else
+            ix = (x - patchSize + 1) / patchSize;        
+        int iy = y / patchSize;
+
+        int fx = x - ix * patchSize;
+        int fy = y - iy * patchSize;
+
+        meshPartsIdxs.Add(new Vector2Int(ix, iy));
+        if (fx == 0)
+        {
+            meshPartsIdxs.Add(new Vector2Int(ix - 1, iy));
+            if (fy == 0)
+            {
+                meshPartsIdxs.Add(new Vector2Int(ix, iy - 1));
+                meshPartsIdxs.Add(new Vector2Int(ix - 1, iy - 1));
+            }
+        }
+        else if(fy == 0)
+        {
+            meshPartsIdxs.Add(new Vector2Int(ix, iy - 1));
+        }
     }
 
     //WARNING: this one is insane
@@ -189,25 +226,25 @@ public class HexMeshGenerator
     //with basis vectors of 1/3 * (ex - ey) and 1/3 * (2*ex + ey) where
     //ex and ey are basis vectors of our hex grid.
     //Using this we can get hex cells coords from rhombus grid coords like this:
-    //x = (row + 2*col) / 3; y = (col - row) / 3;
+    //x = (col + 2*row) / 3; y = (row - col) / 3;
     //After that we can observe that rhombus grid points can fall into only 3 distinct parts of hex cells
     //determined by mods of our /3 divisions - mods can be 0,0;1,2;2;1, corresponding to "config" 0, 1 and 2
     //Carefully observing various cases of points in a subdivided rhombus grid we can get what hex cells include them    
     public NearCells GetNearCells(int x, int y)
     {
-        int row = x >> subDivsShift;
-        int col = y >> subDivsShift;
+        int col = x >> subDivsShift;
+        int row = y >> subDivsShift;
         int fx = x & subDivsMask;
         int fy = y & subDivsMask;
 
-        int cx = (row + 2 * col) / 3;
+        int cx = (col + 2 * row) / 3;
         int cy;
-        if (col - row >= 0)
-            cy = (col - row) / 3;
+        if (row - col >= 0)
+            cy = (row - col) / 3;
         else
-            cy = (col - row - 2) / 3;
+            cy = (row - col - 2) / 3;
 
-        int config = (row + 2 * col) % 3;
+        int config = (col + 2 * row) % 3;
         switch (config)
         {
             case 0: //rhomb is split between (cx, cy) and (cx+1, cy) cells
@@ -272,12 +309,19 @@ public class HexMeshGenerator
         int idx;
         if (sharedIdx == -1)
         {
+            Vector2 patchOffset = patchOffsetX * patchSize * rhex + patchOffsetY * patchSize * rhey;
+
             idx = mesh.vertices.Count;
             Vector2 planeCoords = row * subdivRhey + col * subdivRhex;
             float y = cell.state == MapCell.State.Full ? 1 : 0;
             Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
+
+            PerlinNoiseSample vNoise = noise.Perlin2D(patchOffset + planeCoords, 0.5f);
+            vertex.y += vNoise.value * 0.3f;
+
             mesh.vertices.Add(vertex);
-            mesh.uvs.Add(new Vector2(vertex.x, vertex.z));            
+            Vector2 uvPos = patchOffset + new Vector2(planeCoords.x, planeCoords.y);
+            mesh.uvs.Add(uvPos);            
         }
         else
         {
@@ -336,12 +380,16 @@ public class HexMeshGenerator
         }
     }
 
-    public void Generate(Map map, int mapOffsetX, int mapOffsetY, Func<MapCell, MeshData> selectCellMesh)
+    public void Generate(Map map, int patchOffsetX, int patchOffsetY, Func<MapCell, MeshData> selectCellMesh)
     {
         Reset();       
         this.map = map;
-        this.mapOffsetX = mapOffsetX;
-        this.mapOffsetY = mapOffsetY;
+
+        this.patchOffsetX = patchOffsetX;
+        this.patchOffsetY = patchOffsetY;
+        this.mapOffsetX = (2 * patchOffsetY + patchOffsetX) * patchSize / 3;
+        this.mapOffsetY = (patchOffsetY - patchOffsetX) * patchSize / 3;
+      
         this.selectCellMesh = selectCellMesh;
 
         CreateVerticesAndAssignToCells();      
@@ -461,7 +509,13 @@ public class HexMeshGenerator
                             wallMesh.vertices.Add(lowVert);
 
                             //UVs
-                            float u = WallUForGridCoords(wis.GridCoords[l]);
+                            Vector2Int gridCoords = wis.GridCoords[l];
+
+                            //TODO: this is possibly wrong (offsets)
+                            gridCoords.x += patchOffsetX * patchSize * subDivs;
+                            gridCoords.y += patchOffsetY * patchSize * subDivs;
+
+                            float u = WallUForGridCoords(gridCoords);
                             wallMesh.uvs.Add(new Vector2(u, 1));
                             wallMesh.uvs.Add(new Vector2(u, 0));
                         }
@@ -500,5 +554,7 @@ public class HexMeshGenerator
             }
         }
     }
+
+    
 }
 
