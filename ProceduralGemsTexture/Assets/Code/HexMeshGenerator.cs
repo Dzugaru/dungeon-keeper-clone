@@ -316,14 +316,16 @@ public class HexMeshGenerator
             float y = cell.state == MapCell.State.Full ? 1 : 0;
             Vector3 vertex = new Vector3(planeCoords.x, y, planeCoords.y);
 
+            //TODO: move noise out
+            float noiseStrength = 0.1f;
             PerlinNoiseSample vNoise = noise.Perlin2D(patchOffset + planeCoords, 0.5f);
-            vertex.y += vNoise.value * 0.3f;
+            vertex.y += vNoise.value * noiseStrength;
 
             mesh.vertices.Add(vertex);
             Vector2 uvPos = patchOffset + new Vector2(planeCoords.x, planeCoords.y);
             mesh.uvs.Add(uvPos);
 
-            Vector3 normal = new Vector3(-vNoise.derivative.x * 0.3f, 1, -vNoise.derivative.y * 0.3f).normalized;
+            Vector3 normal = new Vector3(-vNoise.derivative.x * noiseStrength, 1, -vNoise.derivative.y * noiseStrength).normalized;
             mesh.normals.Add(normal);
         }
         else

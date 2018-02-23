@@ -6,18 +6,20 @@ using UnityEngine;
 
 [Serializable]
 public class Map : ScriptableObject
-{   
-    public int size;    
+{ 
+    public int size, radius;    
 
     [SerializeField]
     MapCell[] cells;
+    
+    public MapCell externalCell;
 
     [SerializeField]
-    public MapCell externalCell;
+    HexXY center;
 
     public MapCell GetCell(int x, int y)
     {
-        if (y < 0 || y >= size || x < 0 || x >= size)
+        if (HexXY.Dist(new HexXY(x, y), center) > radius)
             return externalCell;
         else
             return cells[y * size + x];
@@ -33,11 +35,12 @@ public class Map : ScriptableObject
         
     }   
 
+
     public void New(int radius)
     {
-        this.size = 2 * radius + 1;        
-
-        HexXY center = new HexXY(radius, radius);
+        this.radius = radius;
+        this.size = 2 * radius + 1;
+        this.center = new HexXY(radius, radius);
 
         externalCell = new MapCell();        
         externalCell.type = MapCell.CellType.Stone;
@@ -47,13 +50,8 @@ public class Map : ScriptableObject
 
         cells = new MapCell[size * size];
         for (int i = 0; i < size; i++)
-            for (int j = 0; j < size; j++)
-            {
-                if (HexXY.Dist(new HexXY(j, i), center) > radius) 
-                    cells[i * size + j] = externalCell; //shape map like a big hexagon
-                else
-                    cells[i * size + j] = new MapCell();
-            }
+            for (int j = 0; j < size; j++)              
+                cells[i * size + j] = new MapCell();            
     }
 
     public IEnumerable<MapCellAndCoords> AllCells()
