@@ -9,7 +9,7 @@ using UnityEditor;
 public class MapEditorEditor : Editor
 {
     MapEditor editor;
-    
+
 
     //MapCellAndCoords MapCellFromPoint(Vector3 p)
     //{
@@ -52,16 +52,32 @@ public class MapEditorEditor : Editor
     //    //Debug.Log(cell);        
     //}
 
+    Tool lastTool = Tool.None;   
+
     private void OnEnable()
     {
         editor = (MapEditor)target;
         editor.map = AssetDatabase.LoadAssetAtPath<Map>("Assets/map.asset");
+
+        //This disables default transform gizmo that gets in the way of editing map
+        lastTool = Tools.current;
+        Tools.current = Tool.None;
+    }
+
+    void OnDisable()
+    {
+        Tools.current = lastTool;
     }
 
     private void OnSceneGUI()
     {
+        Tools.current = Tool.None;
+
         if (Camera.current == null)
             return;
+
+        //This is needed to disable default object selection in scene
+        int controlId = GUIUtility.GetControlID(FocusType.Passive);
 
         Event e = Event.current;
         if (e.type == EventType.MouseDown && e.modifiers == EventModifiers.None)
@@ -72,7 +88,9 @@ public class MapEditorEditor : Editor
 
             editor.floor.Raycast(ray, out dist);
             Vector3 p = ray.origin + dist * ray.direction;
-         
+
+            GUIUtility.hotControl = controlId;
+            e.Use();
 
             Debug.Log(p);            
         }

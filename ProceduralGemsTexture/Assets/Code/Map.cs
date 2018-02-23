@@ -43,7 +43,7 @@ public class Map : ScriptableObject
         externalCell.type = MapCell.CellType.Stone;
 
         //TODO: temporary, when drawing in editor
-        //externalCell.state = MapCell.State.Excavated; 
+        externalCell.state = MapCell.State.Excavated; 
 
         cells = new MapCell[size * size];
         for (int i = 0; i < size; i++)

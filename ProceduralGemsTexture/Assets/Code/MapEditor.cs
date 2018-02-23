@@ -45,7 +45,7 @@ public class MapEditor : MonoBehaviour
     Transform CreatePatch(int i, int j)
     {
         //DEBUG
-        //if (i != 0 || j != -1)
+        //if (i != 2 || j != -2)
         //    return null;
 
         Transform patch = new GameObject(string.Format("Patch {0} {1}",i,j)).transform;
@@ -61,31 +61,47 @@ public class MapEditor : MonoBehaviour
 
         meshGenerator.Generate(map, j, i, meshSelector);
         meshGenerator.GenerateWalls(walls);
-        
-        if (floor.triangles.Count > 0)        
-            CreateMeshGameObject(patch, "Floor", floor, floorMat);
-        if (ceiling.triangles.Count > 0)
-            CreateMeshGameObject(patch, "Ceiling", ceiling, ceilingMat);
+
+        bool isEmpty = true;
+
         if (floor.triangles.Count > 0)
+        {
+            CreateMeshGameObject(patch, "Floor", floor, floorMat);
+            isEmpty = false;
+        }
+        if (ceiling.triangles.Count > 0)
+        {
+            CreateMeshGameObject(patch, "Ceiling", ceiling, ceilingMat);
+            isEmpty = false;
+        }
+        if (walls.triangles.Count > 0)
+        {
             CreateMeshGameObject(patch, "Walls", walls, wallsMat);
+            isEmpty = false;
+        }
 
         //NOTE: we don't draw mapEdges
 
-        //TODO: if nothing was added - don't create a patch
-
-        return patch;
+        if (isEmpty)
+        {
+            DestroyImmediate(patch.gameObject);
+            return null;
+        }
+        else
+            return patch;
     }
 
     public void CreateMapMeshes()
     {
         meshGenerator = new HexMeshGenerator(meshPatchSize, meshSubdivsShift);
 
-        //DEBUG
+        //DEBUG some walls
         foreach (var cell in map.AllCells())
         {
             if (HexXY.Dist(new HexXY(map.size / 2, map.size / 2), cell.Coords) < map.size / 3)
                 cell.Cell.state = MapCell.State.Excavated;
         }
+        //-------------
 
         int s = (map.size - 1) / meshPatchSize + 1;
         patchesX0 = -2 * s;
