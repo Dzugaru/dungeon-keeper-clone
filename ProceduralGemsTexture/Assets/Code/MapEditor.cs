@@ -34,9 +34,8 @@ public class MapEditor : MonoBehaviour
         MeshFilter meshFilter = t.gameObject.AddComponent<MeshFilter>();
         MeshRenderer meshRenderer = t.gameObject.AddComponent<MeshRenderer>();
         Mesh mesh = new Mesh();
-        meshData.SetToMesh(mesh);
-        mesh.RecalculateBounds();
-        mesh.RecalculateNormals(); //TODO: make normals inside generator (analytical)      
+        meshData.SetToMesh(mesh);        
+        mesh.RecalculateBounds(); //TODO: do this when constructing too        
         meshFilter.sharedMesh = mesh;
         meshRenderer.sharedMaterial = mat;
         t.parent = parent;

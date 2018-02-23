@@ -321,7 +321,10 @@ public class HexMeshGenerator
 
             mesh.vertices.Add(vertex);
             Vector2 uvPos = patchOffset + new Vector2(planeCoords.x, planeCoords.y);
-            mesh.uvs.Add(uvPos);            
+            mesh.uvs.Add(uvPos);
+
+            Vector3 normal = new Vector3(-vNoise.derivative.x * 0.3f, 1, -vNoise.derivative.y * 0.3f).normalized;
+            mesh.normals.Add(normal);
         }
         else
         {
@@ -499,6 +502,9 @@ public class HexMeshGenerator
                     {
                         WallVerticesInfo wis = cvi.WallVertices[k];
 
+                        if (wis.High.Count < 2)
+                            continue;                        
+
                         for (int l = 0; l < wis.High.Count; l++)
                         {
                             //Verts
@@ -510,18 +516,44 @@ public class HexMeshGenerator
 
                             //UVs
                             Vector2Int gridCoords = wis.GridCoords[l];
-
-                            //TODO: this is possibly wrong (offsets)
+                            
                             gridCoords.x += patchOffsetX * patchSize * subDivs;
                             gridCoords.y += patchOffsetY * patchSize * subDivs;
 
                             float u = WallUForGridCoords(gridCoords);
                             wallMesh.uvs.Add(new Vector2(u, 1));
                             wallMesh.uvs.Add(new Vector2(u, 0));
+
+                            //Normals
+                            //TODO: just neigbours for now, can smooth later if needed
+                            Vector3 highNeigh;
+                            if (l == 0)
+                                highNeigh = wis.High[l + 1];
+                            else
+                                highNeigh = wis.High[l - 1];
+
+                            Vector3 normal = Vector3.Cross(highNeigh - highVert, lowVert - highVert);
+                            if (l > 0)
+                                normal = -normal;
+                            if (!(k >= 1 && k <= 3))
+                                normal = -normal;
+
+                            normal = normal.normalized;
+                            wallMesh.normals.Add(normal);
+                            wallMesh.normals.Add(normal);
                         }
 
                         for (int l = 0; l < wis.High.Count - 1; l++)
                         {
+                            //Cut 0,0 outermost walls (duplicate walls in different patches cause z-fighting
+                            Vector2Int gridCoords0 = wis.GridCoords[l];
+                            Vector2Int gridCoords1 = wis.GridCoords[l + 1];
+                            if((gridCoords0.x == 0 && gridCoords1.x == 0) || (gridCoords0.y == 0 && gridCoords1.y == 0))
+                            {
+                                nextIdx += 2;
+                                continue;
+                            }
+
                             //Different winding order due to wall vertices
                             //filling order in main mesh generation above
                             if (k >= 1 && k <= 3)
